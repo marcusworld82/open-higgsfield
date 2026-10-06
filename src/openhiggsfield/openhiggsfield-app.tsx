@@ -155,6 +155,17 @@ function failureText(status: GenerationStatus): string {
   return "the platform reported a failure";
 }
 
+function bannerFor(record: { error?: string; modelId?: string } | undefined): string {
+  const reason = record?.error || "the provider reported a failure";
+  if (reason === "Generation failed") {
+    const wanReference = record?.modelId === "wan-3" || record?.modelId === "wan-3-prime";
+    return wanReference
+      ? "Higgsfield accepted the job and failed it, with no reason. Nothing was charged. Keeping a video's motion and swapping the person is Genjutsu Motion, not Wan reference. Switch to Genjutsu, mode Motion, and use the same video and images."
+      : "Higgsfield accepted the job and failed it, with no reason. Nothing was charged. Retry the same prompt.";
+  }
+  return `Run not delivered — ${reason}.`;
+}
+
 function describeError(caught: unknown): string {
   const message = caught instanceof Error ? caught.message : String(caught);
   if (caught instanceof MissingCredentialsError) {
@@ -307,11 +318,8 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
         });
         markFresh(records.filter((record) => record.status === "completed").map((record) => record.id));
         if (records.some((record) => record.status === "failed")) {
-          const failure = records[0]?.error ?? "the platform reported a failure";
-          setError(
-            (prev) =>
-              prev ?? `Run not delivered — ${failure}. Adjust the prompt or settings and retry.`,
-          );
+          const failure = records.find((record) => record.status === "failed");
+          setError((prev) => prev ?? bannerFor(failure));
         }
       } catch (caught) {
         if (!alive.current) return;
@@ -454,7 +462,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
           });
           markFresh(records.filter((record) => record.status === "completed").map((record) => record.id));
           if (records.some((record) => record.status === "failed")) {
-            setError((prev) => prev ?? `Run not delivered — ${records[0]?.error ?? "the provider reported a failure"}.`);
+            setError((prev) => prev ?? bannerFor(records.find((record) => record.status === "failed")));
           }
           return;
         }
