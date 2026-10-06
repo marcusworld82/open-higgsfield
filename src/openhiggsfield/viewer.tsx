@@ -14,6 +14,7 @@ import {
   HeartIcon,
   OpenOutIcon,
   RetryIcon,
+  TemplateIcon,
   TrashIcon,
 } from "./icons";
 
@@ -43,6 +44,7 @@ export function Viewer({
   item,
   onClose,
   onReuse,
+  onSaveTemplate,
   onFavorite,
   onDelete,
   onPrev,
@@ -51,6 +53,7 @@ export function Viewer({
   item: RunRecord;
   onClose: () => void;
   onReuse: () => void;
+  onSaveTemplate?: () => void;
   onFavorite: () => void;
   onDelete: () => void;
   /* Absent at the ends of the scope, which is how the walk stops. */
@@ -301,6 +304,16 @@ export function Viewer({
               <RetryIcon />
               Recreate
             </button>
+            {onSaveTemplate && item.status === "completed" && item.urls.length > 0 && (
+              <button
+                type="button"
+                className="ohf-btn-solid"
+                onClick={() => leave(onSaveTemplate)}
+              >
+                <TemplateIcon />
+                Save template
+              </button>
+            )}
             {/* Names the refusal and the way past it: the same press, now
                 falling through to the anchor's own navigation, hands the file
                 to a tab the browser can save from. */}

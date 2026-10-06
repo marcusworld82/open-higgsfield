@@ -1,5 +1,5 @@
 import { browserLegacy, defaultKv, type Kv, type LegacyStore } from "./idb";
-import type { Surface } from "@/generation/catalog";
+import type { MediaRole, Surface } from "@/generation/catalog";
 
 export type RunStatus = "running" | "completed" | "failed";
 
@@ -28,6 +28,8 @@ export interface RunRecord {
   /** Resolved catalog settings this run was submitted with, so reuse can
       restore the dials and not just the words. Absent on pre-existing records. */
   settings?: Record<string, unknown>;
+  /** Public input URLs, so a saved template can put the same frames back. */
+  inputs?: Array<{ role: MediaRole; url: string }>;
 }
 
 export const HISTORY_KEY = "history.v1";

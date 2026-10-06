@@ -1,5 +1,6 @@
 export type Surface = "image" | "video";
 export type MediaRole = "start" | "end" | "reference" | "video" | "audio";
+export type ProviderId = "higgsfield" | "openai" | "google";
 
 export type MediaItem = {
   id: string;
@@ -27,6 +28,8 @@ export type ModelEntry = {
   settings: Record<string, SettingField>;
   /** Submit paths when the shared mapper is enough. Soul, Kling 3, and Seedance keep custom maps. */
   paths?: PlatformPaths;
+  /** Defaults to Higgsfield. OpenAI and Google use the keys saved for those providers. */
+  provider?: ProviderId;
 };
 
 export type GenerationPlane = {

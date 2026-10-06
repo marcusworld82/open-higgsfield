@@ -8,48 +8,90 @@ export const PLATFORM_KEY_COOKIE_OPTIONS = {
   maxAge: 60 * 60 * 24 * 30,
 };
 
+/** Higgsfield runs the catalog. OpenAI is GPT Image 2.5. Google is Nano Banana Pro. */
+export const PROVIDERS = ["higgsfield", "openai", "google"] as const;
+export type ProviderId = (typeof PROVIDERS)[number];
+
+export const PROVIDER_LABELS: Record<ProviderId, string> = {
+  higgsfield: "Higgsfield",
+  openai: "OpenAI",
+  google: "Google AI",
+};
+
+export type KeyMap = Partial<Record<ProviderId, string>>;
+
 export class MissingCredentialsError extends Error {
-  constructor() {
-    super("Missing platform key");
+  readonly provider: ProviderId;
+
+  constructor(provider: ProviderId = "higgsfield") {
+    super(`Missing ${PROVIDER_LABELS[provider]} key`);
     this.name = "MissingCredentialsError";
+    this.provider = provider;
   }
 }
 
-export function encodeCredentials(apiKey: string): string {
-  return JSON.stringify({ apiKey });
+export function encodeCredentials(keys: KeyMap): string {
+  return JSON.stringify({ keys });
 }
 
-export function decodeCredentials(raw: string | undefined): { apiKey: string } | null {
+export function decodeCredentials(raw: string | undefined): KeyMap | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    const apiKey = (parsed as { apiKey?: unknown }).apiKey;
-    if (typeof apiKey !== "string" || !apiKey.trim()) return null;
-    return { apiKey: requireIdAndSecret(apiKey.trim()) };
+    const record = parsed as { apiKey?: unknown; keys?: unknown };
+    const keys: KeyMap = {};
+    if (typeof record.apiKey === "string" && record.apiKey.trim()) {
+      keys.higgsfield = requireProviderKey("higgsfield", record.apiKey);
+    }
+    if (record.keys !== null && typeof record.keys === "object" && !Array.isArray(record.keys)) {
+      for (const provider of PROVIDERS) {
+        const value = (record.keys as Record<string, unknown>)[provider];
+        if (typeof value === "string" && value.trim()) {
+          keys[provider] = requireProviderKey(provider, value);
+        }
+      }
+    }
+    return Object.keys(keys).length > 0 ? keys : null;
   } catch {
     return null;
   }
 }
 
-export function parseCredentialInput(data: unknown): { apiKey: string } {
+export function parseCredentialInput(data: unknown): { provider: ProviderId; apiKey: string } {
   if (data === null || typeof data !== "object" || Array.isArray(data)) {
     throw new Error("Enter an API key");
   }
-  const record = data as { apiKey?: unknown; api_key?: unknown };
+  const record = data as { apiKey?: unknown; api_key?: unknown; provider?: unknown };
+  const provider = parseProvider(record.provider);
   const apiKey = record.apiKey ?? record.api_key;
   if (typeof apiKey !== "string" || !apiKey.trim()) throw new Error("Enter an API key");
-  return { apiKey: requireIdAndSecret(apiKey.trim()) };
+  return { provider, apiKey: requireProviderKey(provider, apiKey.trim()) };
 }
 
 export function toAuthorizationHeader(apiKey: string): string {
-  return `Key ${requireIdAndSecret(apiKey)}`;
+  return `Key ${requireProviderKey("higgsfield", apiKey)}`;
 }
 
-function requireIdAndSecret(apiKey: string): string {
-  const colon = apiKey.indexOf(":");
-  if (colon <= 0 || colon === apiKey.length - 1) {
-    throw new Error("API key must be id:secret");
+export function providerOfModel(provider: ProviderId | undefined): ProviderId {
+  return provider ?? "higgsfield";
+}
+
+function parseProvider(value: unknown): ProviderId {
+  if (value === undefined || value === "higgsfield") return "higgsfield";
+  if (value === "openai" || value === "google") return value;
+  throw new Error("Pick a provider");
+}
+
+function requireProviderKey(provider: ProviderId, apiKey: string): string {
+  const trimmed = apiKey.trim();
+  if (!trimmed) throw new Error("Enter an API key");
+  if (provider === "higgsfield") {
+    const colon = trimmed.indexOf(":");
+    if (colon <= 0 || colon === trimmed.length - 1) {
+      throw new Error("Higgsfield key must be id:secret");
+    }
   }
-  return apiKey;
+  if (trimmed.length > 400) throw new Error("That key is too long");
+  return trimmed;
 }

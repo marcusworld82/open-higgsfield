@@ -5,7 +5,9 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { parseSettings } from "@/generation/catalog";
 import type { ModelEntry, Surface } from "@/generation/catalog";
+import { estimateUsd, formatEstimate } from "@/generation/estimate";
 import { MAX_BATCH, useActive } from "@/generation/stores/active";
+import { useVideoMedia } from "@/generation/stores/media";
 import { useImagePrompt, useVideoPrompt } from "@/generation/stores/prompt";
 import { useSettings } from "@/generation/stores/settings";
 
@@ -85,6 +87,10 @@ export function Composer({
   const settings = useSettings();
   const values = parseSettings(model, settings.byModel[model.id] ?? {});
   const tray = useMediaTray(model, onError);
+  const videoReady = useVideoMedia((state) =>
+    state.items.some((item) => item.role === "video") &&
+    state.items.some((item) => item.role === "reference"),
+  );
 
   const [overlay, setOverlay] = useState<string | null>(null);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
@@ -94,7 +100,7 @@ export function Composer({
   const promptRef = useRef<HTMLTextAreaElement>(null);
   /* A run in flight is not a lock: it holds its own tile in the grid, so the
      only thing that can stop a press is having nothing to say. */
-  const disabled = prompt.text.trim().length === 0;
+  const disabled = model.id === "genjutsu" ? !videoReady : prompt.text.trim().length === 0;
 
   /* One batch control, two mechanisms. A model that declares its own
      results-per-request gets that setting written; the rest are submitted once
@@ -211,7 +217,12 @@ export function Composer({
   const attachLabel = tray.allFull ? "Change the inputs" : "Add an input";
   const settingKey = overlay?.startsWith(SETTING) ? overlay.slice(SETTING.length) : null;
   const generateLabel = batchValue > 1 ? `Generate ${batchValue} results` : "Generate";
-  const generateTip = disabled ? "Write a prompt first" : `${generateLabel} · ${shortcut ?? "⌘↵"}`;
+  const generateTip = disabled
+    ? model.id === "genjutsu"
+      ? "Add a source video and at least one image"
+      : "Write a prompt first"
+    : `${generateLabel} · ${shortcut ?? "⌘↵"}`;
+  const estimate = formatEstimate(estimateUsd(model, values, batchValue));
 
   return (
     <div className="ohf-dock" ref={dockRef} data-selecting={selecting}>
@@ -363,6 +374,9 @@ export function Composer({
               </div>
 
               <span className="ohf-generate-slot ohf-tip ohf-tip--end" data-tip={generateTip}>
+                <span className="ohf-cost" title="Planning estimate before you generate. OpenAI and Google follow published list rates. Higgsfield bills the key on your account.">
+                  {estimate}
+                </span>
                 <button
                   type="button"
                   className="ohf-generate"

@@ -1,6 +1,8 @@
 import { dop } from "./dop";
 import { flux2 } from "./flux-2";
 import { flux3 } from "./flux-3";
+import { genjutsu } from "./genjutsu";
+import { gptImage25 } from "./gpt-image-2.5";
 import { grokImagine2 } from "./grok-imagine-2";
 import { grokImagineVideo15 } from "./grok-imagine-video-1.5";
 import { happyHorse1 } from "./happy-horse-1";
@@ -22,6 +24,7 @@ import { ltx25Fast } from "./ltx-2.5-fast";
 import { ltx25Pro } from "./ltx-2.5-pro";
 import { minimaxH3 } from "./minimax-h3";
 import { minimaxHailuo23 } from "./minimax-hailuo-2.3";
+import { nanoBananaPro } from "./nano-banana-pro";
 import { parseSettings } from "./parse-settings";
 import { pixverse6 } from "./pixverse-6";
 import { qwenImage3 } from "./qwen-image-3";
@@ -37,8 +40,11 @@ import { wan3Prime } from "./wan-3-prime";
 import { zImageTurbo } from "./z-image-turbo";
 
 export const MODELS: readonly ModelEntry[] = [
+  gptImage25,
+  nanoBananaPro,
   soul2,
   soulCinema,
+  genjutsu,
   seedance25,
   seedance25Edit,
   seedance25Extend,

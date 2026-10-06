@@ -2,23 +2,35 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
-import { clearPlatformCredentials, savePlatformCredentials } from "@/generation/actions";
+import {
+  PROVIDER_LABELS,
+  PROVIDERS,
+  type ProviderId,
+} from "@/generation/credentials";
+import { clearPlatformCredentials, savePlatformCredentials, type KeyPresence } from "@/generation/actions";
 
 import { CloseIcon } from "./icons";
 
+const HINTS: Record<ProviderId, string> = {
+  higgsfield: "Paste the Higgsfield key as id:secret. It runs the catalog, including Genjutsu.",
+  openai: "Paste an OpenAI API key. GPT Image 2.5 (Flare and Sunburst) uses this key.",
+  google: "Paste a Google AI Studio key. Nano Banana Pro (Gemini 3 Pro Image) uses this key.",
+};
+
 export function KeyModal({
-  configured,
+  presence,
+  initialProvider,
   onClose,
-  onSaved,
-  onCleared,
+  onChange,
 }: {
-  configured: boolean;
+  presence: KeyPresence;
+  initialProvider: ProviderId;
   onClose: () => void;
-  onSaved: () => void;
-  onCleared: () => void;
+  onChange: (presence: KeyPresence) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const [provider, setProvider] = useState<ProviderId>(initialProvider);
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,13 +40,17 @@ export function KeyModal({
     panelRef.current?.focus();
   }, []);
 
+  const configured = presence[provider];
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await savePlatformCredentials({ api_key: apiKey });
-      onSaved();
+      await savePlatformCredentials({ provider, api_key: apiKey });
+      const next = { ...presence, [provider]: true };
+      onChange(next);
+      setApiKey("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save the key");
     } finally {
@@ -46,9 +62,9 @@ export function KeyModal({
     setBusy(true);
     setError(null);
     try {
-      await clearPlatformCredentials();
+      await clearPlatformCredentials({ provider });
+      onChange({ ...presence, [provider]: false });
       setApiKey("");
-      onCleared();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not remove the key");
     } finally {
@@ -69,13 +85,9 @@ export function KeyModal({
         <div className="ohf-keys-head">
           <div>
             <div id="ohf-keys-title" className="ohf-keys-title">
-              API key
+              API keys
             </div>
-            <p className="ohf-keys-copy">
-              {configured
-                ? "A key is saved in this browser. Enter a new id:secret pair to replace it."
-                : "Paste your platform key as id:secret. It stays in an httpOnly cookie and is sent as Authorization: Key id:secret."}
-            </p>
+            <p className="ohf-keys-copy">{HINTS[provider]} Keys stay in an httpOnly cookie.</p>
           </div>
           <button type="button" className="ohf-icon-btn" aria-label="Close" onClick={onClose}>
             <CloseIcon size={13} />
@@ -84,13 +96,36 @@ export function KeyModal({
 
         <form className="ohf-keys-form" onSubmit={(event) => void onSubmit(event)}>
           <label className="ohf-field">
-            <div className="ohf-field-label">API key</div>
+            <div className="ohf-field-label">Provider</div>
+            <select
+              className="ohf-input"
+              value={provider}
+              onChange={(event) => {
+                setProvider(event.target.value as ProviderId);
+                setApiKey("");
+                setError(null);
+              }}
+            >
+              {PROVIDERS.map((id) => (
+                <option key={id} value={id}>
+                  {PROVIDER_LABELS[id]}
+                  {presence[id] ? " · connected" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="ohf-field">
+            <div className="ohf-field-label">
+              {configured ? `Replace ${PROVIDER_LABELS[provider]} key` : `${PROVIDER_LABELS[provider]} key`}
+            </div>
             <input
               className="ohf-input ohf-input--mono"
               name="api_key"
               type="password"
               autoComplete="off"
               spellCheck={false}
+              placeholder={provider === "higgsfield" ? "id:secret" : "Paste key"}
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
             />

@@ -9,7 +9,11 @@
 **Hosted version:** [openhiggsfield.ai](https://openhiggsfield.ai)
 
 Image and Video in one studio, in the browser — no Node.js, no setup. Add your
-platform key (`id:secret`) to start generating. The studio itself is free.
+Higgsfield key (`id:secret`) to start generating. The same key control also
+stores an OpenAI key for GPT Image 2.5 and a Google AI key for Nano Banana Pro.
+Genjutsu (motion transfer, object swap, restyle) is in the video catalog.
+Finished runs can be saved from the tile or viewer into the Templates tab.
+The cost estimate sits beside Generate. The studio itself is free.
 
 ---
 

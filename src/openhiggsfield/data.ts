@@ -8,18 +8,19 @@ export const SURFACE_LABELS: Record<Surface, string> = {
 };
 
 /** What the gallery is scoped to. "assets" is every run, both surfaces;
-    "favorites" is every run the visitor kept, both surfaces. */
-export type GalleryView = Surface | "assets" | "favorites";
+    "favorites" is every run the visitor kept; "templates" is saved setups. */
+export type GalleryView = Surface | "assets" | "favorites" | "templates";
 
 /** Scopes that span both surfaces, so switching to them leaves the model alone. */
-export const CROSS_VIEWS = new Set<GalleryView>(["assets", "favorites"]);
+export const CROSS_VIEWS = new Set<GalleryView>(["assets", "favorites", "templates"]);
 
-export const VIEWS: readonly GalleryView[] = ["image", "video", "assets", "favorites"];
+export const VIEWS: readonly GalleryView[] = ["image", "video", "assets", "favorites", "templates"];
 
 export const VIEW_LABELS: Record<GalleryView, string> = {
   ...SURFACE_LABELS,
   assets: "Assets",
   favorites: "Favorites",
+  templates: "Templates",
 };
 
 export const PROMPT_PLACEHOLDERS: Record<Surface, string> = {
@@ -88,6 +89,9 @@ const SETTING_LABELS: Record<string, string> = {
   multiShots: "Multi-shot",
   keepOriginalSound: "Keep original sound",
   characterOrientation: "Orientation",
+  variant: "Variant",
+  quality: "Quality",
+  mode: "Mode",
 };
 
 /* A pill carries one word; "Generate audio" is a panel label, not a control on
@@ -114,6 +118,11 @@ export function settingValueLabel(key: string, value: unknown): string {
   if (typeof value === "number") return key === "duration" ? `${value}s` : String(value);
   const text = String(value);
   if (text === "auto") return "Auto";
+  if (text === "motion-transfer") return "Motion";
+  if (text === "object-swap") return "Swap";
+  if (text === "restyle") return "Restyle";
+  if (text === "flare") return "Flare";
+  if (text === "sunburst") return "Sunburst";
   if (/^\d+k$/.test(text)) return text.toUpperCase();
   if (key === "outputFormat") return text.toUpperCase();
   return text;

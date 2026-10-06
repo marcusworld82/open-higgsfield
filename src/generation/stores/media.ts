@@ -8,6 +8,7 @@ type MediaState = {
   items: MediaItem[];
   add: (item: MediaItem) => void;
   remove: (id: string) => void;
+  replace: (items: MediaItem[]) => void;
 };
 
 function createMediaStore(name: string) {
@@ -17,6 +18,7 @@ function createMediaStore(name: string) {
         items: [],
         add: (item) => set((state) => ({ items: [...state.items, item] })),
         remove: (id) => set((state) => ({ items: state.items.filter((item) => item.id !== id) })),
+        replace: (items) => set({ items: items.filter((item) => !item.url.startsWith("blob:")) }),
       }),
       {
         name,

@@ -300,6 +300,15 @@ export function UndoIcon({ size = 13 }: IconProps) {
   );
 }
 
+export function TemplateIcon({ size = 15 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
+      <rect x="2.25" y="2.25" width="8.5" height="8.5" rx="1.6" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M6 11.2V12.2A1.55 1.55 0 0 0 7.55 13.75H12.2A1.55 1.55 0 0 0 13.75 12.2V7.55A1.55 1.55 0 0 0 12.2 6H11.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function WaveBadgeIcon({ size = 12 }: IconProps) {
   return (
     <svg {...base(size)}>

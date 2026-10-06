@@ -15,6 +15,7 @@ import {
   HeartIcon,
   PlayBadgeIcon,
   RetryIcon,
+  TemplateIcon,
   TrashIcon,
   WarningIcon,
 } from "./icons";
@@ -37,6 +38,10 @@ const EMPTY: Record<GalleryView, { title: string; hint: string }> = {
   favorites: {
     title: "Nothing kept yet",
     hint: "Hover a run and press its heart to keep it here. Kept runs stay put when older ones age out of the history.",
+  },
+  templates: {
+    title: "No templates yet",
+    hint: "Finish a run, then save it as a template. Pick one here to load the same model, prompt, settings, and inputs.",
   },
 };
 
@@ -107,6 +112,7 @@ const Tile = memo(function Tile({
   onFavorite,
   onDownload,
   onDelete,
+  onSaveTemplate,
 }: {
   item: RunRecord;
   index: number;
@@ -121,6 +127,7 @@ const Tile = memo(function Tile({
   onFavorite: (item: RunRecord) => void;
   onDownload: (item: RunRecord) => Promise<void>;
   onDelete: (item: RunRecord) => void;
+  onSaveTemplate?: (item: RunRecord) => void;
 }) {
   const delay = `${Math.min(index * 0.035, 0.28).toFixed(3)}s`;
   const poster = item.urls[0];
@@ -280,6 +287,17 @@ const Tile = memo(function Tile({
           end, the slot furthest from the corner the cursor arrives at. */}
       <div className="ohf-tile-acts">
         {remove}
+        {poster && onSaveTemplate && (
+          <button
+            type="button"
+            className="ohf-tile-act"
+            aria-label={`Save as template — ${named}`}
+            title="Save as template"
+            onClick={() => onSaveTemplate(item)}
+          >
+            <TemplateIcon size={15} />
+          </button>
+        )}
         <button
           type="button"
           className="ohf-tile-act"
@@ -341,6 +359,7 @@ export const Gallery = memo(function Gallery({
   onFavorite,
   onDownload,
   onDelete,
+  onSaveTemplate,
   onStarter,
   galleryRef,
 }: {
@@ -356,6 +375,7 @@ export const Gallery = memo(function Gallery({
   onFavorite: (item: RunRecord) => void;
   onDownload: (item: RunRecord) => Promise<void>;
   onDelete: (item: RunRecord) => void;
+  onSaveTemplate?: (item: RunRecord) => void;
   onStarter: (prompt: string) => void;
   galleryRef: RefObject<HTMLDivElement | null>;
 }) {
@@ -391,6 +411,7 @@ export const Gallery = memo(function Gallery({
         onFavorite={onFavorite}
         onDownload={onDownload}
         onDelete={onDelete}
+        onSaveTemplate={onSaveTemplate}
       />
     </div>
   );
@@ -409,6 +430,7 @@ function VirtualizedGrid({
   onFavorite,
   onDownload,
   onDelete,
+  onSaveTemplate,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
   selecting: boolean;
@@ -422,6 +444,7 @@ function VirtualizedGrid({
   onFavorite: (item: RunRecord) => void;
   onDownload: (item: RunRecord) => Promise<void>;
   onDelete: (item: RunRecord) => void;
+  onSaveTemplate?: (item: RunRecord) => void;
 }) {
   const width = useInnerWidth(scrollRef);
   const slots = useMemo(() => slotsOf(runs, items), [runs, items]);
@@ -476,6 +499,7 @@ function VirtualizedGrid({
                   onFavorite={onFavorite}
                   onDownload={onDownload}
                   onDelete={onDelete}
+                  onSaveTemplate={onSaveTemplate}
                 />
               ),
             )}

@@ -2,14 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { hasPlatformCredentials, submitGeneration } from "@/generation/actions";
-import { MissingCredentialsError } from "@/generation/credentials";
+import { hasPlatformCredentials, submitGeneration, type KeyPresence } from "@/generation/actions";
+import { MissingCredentialsError, PROVIDER_LABELS, providerOfModel, type ProviderId } from "@/generation/credentials";
 import { MODELS, getModel } from "@/generation/catalog";
-import type { Surface } from "@/generation/catalog";
+import type { GenerationPlane, Surface } from "@/generation/catalog";
 import { assemblePlane } from "@/generation/plane";
 import type { GenerationStatus } from "@/generation/platform";
 import { POLL_DEADLINE_MS, stopWatching, watchRequest } from "@/generation/poll";
 import { useActive } from "@/generation/stores/active";
+import { useImageMedia, useVideoMedia } from "@/generation/stores/media";
 import { useImagePrompt, useVideoPrompt } from "@/generation/stores/prompt";
 import { useSettings } from "@/generation/stores/settings";
 
@@ -27,6 +28,7 @@ import {
 } from "./data";
 import { Gallery } from "./gallery";
 import { loadHistory, mergeHistory, replaceRequest, saveHistory, stepRun, type RunRecord } from "./history";
+import { loadTemplates, saveTemplates, templateFrom } from "./templates";
 import { CloseIcon, UndoIcon } from "./icons";
 import { SelectionBar, type SaveProgress } from "./selection-bar";
 import { Topbar } from "./topbar";
@@ -54,6 +56,7 @@ type RunDraft = {
   meta: string;
   badge?: string;
   settings?: Record<string, unknown>;
+  inputs?: RunRecord["inputs"];
   createdAt: number;
 };
 
@@ -77,6 +80,7 @@ function draftOf(record: RunRecord): RunDraft {
     meta: record.meta,
     badge: record.badge,
     settings: record.settings,
+    inputs: record.inputs,
     createdAt: record.createdAt,
   };
 }
@@ -100,6 +104,7 @@ function runningRows(requestId: string, count: number, draft: RunDraft): RunReco
       art: artFor(draft.surface, hueOf(id), id),
       createdAt: draft.createdAt,
       settings: draft.settings,
+      inputs: draft.inputs,
     };
   });
 }
@@ -130,6 +135,7 @@ function terminalRows(requestId: string, draft: RunDraft, status: GenerationStat
       art: artFor(draft.surface, hueOf(id), id),
       createdAt: draft.createdAt,
       settings: draft.settings,
+      inputs: draft.inputs,
     };
   });
 }
@@ -151,10 +157,20 @@ function failureText(status: GenerationStatus): string {
 
 function describeError(caught: unknown): string {
   const message = caught instanceof Error ? caught.message : String(caught);
-  if (caught instanceof MissingCredentialsError || message.includes("Missing platform key")) {
-    return "Add your platform key to generate.";
+  if (caught instanceof MissingCredentialsError) {
+    return `Add your ${PROVIDER_LABELS[caught.provider]} key to generate.`;
   }
-  return `Generation failed — ${message}. Try again; if it repeats, check the key in the sidebar.`;
+  return `Generation failed — ${message}. Try again; if it repeats, check the key.`;
+}
+
+function inputsOf(plane: GenerationPlane): RunRecord["inputs"] {
+  const inputs: NonNullable<RunRecord["inputs"]> = [];
+  for (const role of ["start", "end", "reference", "video", "audio"] as const) {
+    for (const item of plane.media[role] ?? []) {
+      if (!item.url.startsWith("blob:")) inputs.push({ role: item.role, url: item.url });
+    }
+  }
+  return inputs.length > 0 ? inputs : undefined;
 }
 
 export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: string }) {
@@ -179,8 +195,16 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
      recent sheets on top, and a range extends from the last one touched. */
   const [selected, setSelected] = useState<string[]>([]);
   const [saving, setSaving] = useState<SaveProgress | null>(null);
-  const [keyConfigured, setKeyConfigured] = useState(false);
+  const [templates, setTemplates] = useState<RunRecord[]>([]);
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
+  const [keys, setKeys] = useState<KeyPresence>({
+    higgsfield: false,
+    openai: false,
+    google: false,
+  });
+  const [keyProvider, setKeyProvider] = useState<ProviderId>("higgsfield");
   const [keysOpen, setKeysOpen] = useState(false);
+  const keyConfigured = keys.higgsfield || keys.openai || keys.google;
 
   const galleryRef = useRef<HTMLDivElement>(null);
   const rangeAnchor = useRef<number | null>(null);
@@ -221,9 +245,26 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
   }, [historyLoaded, history]);
 
   useEffect(() => {
+    let live = true;
+    void loadTemplates()
+      .then((rows) => {
+        if (live) setTemplates(rows);
+      })
+      .finally(() => {
+        if (live) setTemplatesLoaded(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (templatesLoaded) void saveTemplates(templates);
+  }, [templatesLoaded, templates]);
+
+  useEffect(() => {
     void hasPlatformCredentials().then((ready) => {
-      setKeyConfigured(ready);
-      if (!ready) setKeysOpen(true);
+      setKeys(ready);
+      if (!ready.higgsfield && !ready.openai && !ready.google) setKeysOpen(true);
     });
   }, []);
 
@@ -304,10 +345,11 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
   }, [historyLoaded, resume]);
 
   const visible = useMemo(() => {
+    if (view === "templates") return templates;
     if (view === "assets") return history;
     if (view === "favorites") return history.filter((record) => record.favorite === true);
     return history.filter((record) => record.surface === view);
-  }, [history, view]);
+  }, [history, templates, view]);
 
   const switchView = useCallback(
     (next: GalleryView) => {
@@ -324,15 +366,26 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
      its own skeletons and keeps its own watch, so the composer is free the
      moment the tiles appear and any number of runs can be in flight. */
   const generate = useCallback(async () => {
-    if (!keyConfigured) {
+    const plane = assemblePlane();
+    const entry = getModel(plane.model);
+    const needed = providerOfModel(entry.provider);
+    if (!keys[needed]) {
+      setKeyProvider(needed);
       setKeysOpen(true);
-      setError("Add your platform key to generate.");
+      setError(`Add your ${PROVIDER_LABELS[needed]} key to generate.`);
       return;
     }
-    const plane = assemblePlane();
-    if (!plane.prompt.text.trim()) return;
+    if (entry.id === "genjutsu") {
+      const hasVideo = (plane.media.video ?? []).length > 0;
+      const hasImage = (plane.media.reference ?? []).length > 0;
+      if (!hasVideo || !hasImage) {
+        setError("Genjutsu needs a source video and at least one reference image.");
+        return;
+      }
+    } else if (!plane.prompt.text.trim()) {
+      return;
+    }
 
-    const entry = getModel(plane.model);
     const ratio = ratioToCss(
       plane.settings.aspectRatio,
       entry.surface === "image" ? "4 / 3" : "16 / 9",
@@ -369,6 +422,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
       meta,
       badge,
       settings: plane.settings,
+      inputs: inputsOf(plane),
       createdAt: startedAt,
     };
 
@@ -380,6 +434,19 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
     const runOne = async (slot: { skeletons: string[] }) => {
       try {
         const queued = await submitGeneration(plane);
+        if (queued.done) {
+          const records = terminalRows(queued.requestId, draft, queued.done);
+          setHistory((prev) => {
+            const next = [...records, ...prev];
+            void saveHistory(next);
+            return next;
+          });
+          markFresh(records.filter((record) => record.status === "completed").map((record) => record.id));
+          if (records.some((record) => record.status === "failed")) {
+            setError((prev) => prev ?? `Run not delivered — ${records[0]?.error ?? "the provider reported a failure"}.`);
+          }
+          return;
+        }
         setHistory((prev) => {
           const next = [...runningRows(queued.requestId, slot.skeletons.length, draft), ...prev];
           void saveHistory(next);
@@ -390,7 +457,10 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
       } catch (caught) {
         if (!alive.current) return;
         const message = describeError(caught);
-        if (message.includes("platform key")) setKeysOpen(true);
+        if (message.includes("key")) {
+          setKeyProvider(needed);
+          setKeysOpen(true);
+        }
         setError((prev) => prev ?? message);
       } finally {
         if (alive.current) {
@@ -400,7 +470,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
     };
 
     await Promise.all(slots.map(runOne));
-  }, [keyConfigured, resume]);
+  }, [keys, markFresh, resume]);
 
   /* Reuse restores the whole plane the run was made from — model, its dials,
      then the words. A reuse that dropped the ratio and resolution would
@@ -412,6 +482,16 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
         if (record.settings) setSettings(record.modelId, record.settings);
       }
       (record.surface === "image" ? useImagePrompt : useVideoPrompt).getState().setText(record.prompt);
+      const media = record.surface === "image" ? useImageMedia : useVideoMedia;
+      if (record.inputs?.length) {
+        media.getState().replace(
+          record.inputs.map((input, index) => ({
+            id: `${record.id}-in-${index}`,
+            role: input.role,
+            url: input.url,
+          })),
+        );
+      }
       setViewerId(null);
       setError(null);
       setFocusNonce((n) => n + 1);
@@ -420,6 +500,14 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
   );
 
   const toggleFavorite = useCallback((record: RunRecord) => {
+    if (record.id.startsWith("template-")) {
+      setTemplates((prev) =>
+        prev.map((entry) =>
+          entry.id === record.id ? { ...entry, favorite: !entry.favorite } : entry,
+        ),
+      );
+      return;
+    }
     setHistory((prev) =>
       prev.map((entry) =>
         entry.id === record.id ? { ...entry, favorite: !entry.favorite } : entry,
@@ -434,7 +522,20 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
     setDeleted(records);
   }, []);
 
-  const deleteRun = useCallback((record: RunRecord) => deleteRuns([record]), [deleteRuns]);
+  const deleteRun = useCallback((record: RunRecord) => {
+    if (record.id.startsWith("template-")) {
+      setTemplates((prev) => prev.filter((entry) => entry.id !== record.id));
+      return;
+    }
+    deleteRuns([record]);
+  }, [deleteRuns]);
+
+  const saveAsTemplate = useCallback((record: RunRecord) => {
+    if (record.status !== "completed" || record.urls.length === 0) return;
+    setTemplates((prev) => [templateFrom(record), ...prev]);
+    setView("templates");
+    setViewerId(null);
+  }, []);
 
   /* History is newest-first by construction, so the restored runs drop back
      into their own places rather than onto the top of the grid. */
@@ -601,7 +702,8 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
   const downloadSelection = useCallback(() => void downloadPicked(), [downloadPicked]);
   const dismissDeleted = useCallback(() => setDeleted(null), []);
   const viewerItem = viewerId
-    ? (history.find((record) => record.id === viewerId && record.status !== "running") ?? null)
+    ? [...history, ...templates].find((record) => record.id === viewerId && record.status !== "running") ??
+      null
     : null;
 
   /* The walk follows the scope on screen, not the whole log: arrowing out of
@@ -645,6 +747,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
             onFavorite={toggleFavorite}
             onDownload={downloadRun}
             onDelete={deleteRun}
+            onSaveTemplate={view === "templates" ? undefined : saveAsTemplate}
             onStarter={applyStarter}
             galleryRef={galleryRef}
           />
@@ -688,6 +791,9 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
             onNext={nextRun ? () => setViewerId(nextRun.id) : undefined}
             onClose={() => setViewerId(null)}
             onReuse={() => retry(viewerItem)}
+            onSaveTemplate={
+              viewerItem.id.startsWith("template-") ? undefined : () => saveAsTemplate(viewerItem)
+            }
             onFavorite={() => toggleFavorite(viewerItem)}
             /* The viewer is released along with the run, so undoing the
                delete restores it to the grid and not back over the studio. */
@@ -699,15 +805,12 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
         )}
         {keysOpen && (
           <KeyModal
-            configured={keyConfigured}
+            presence={keys}
+            initialProvider={keyProvider}
             onClose={() => setKeysOpen(false)}
-            onSaved={() => {
-              setKeyConfigured(true);
-              setKeysOpen(false);
+            onChange={(next) => {
+              setKeys(next);
               setError(null);
-            }}
-            onCleared={() => {
-              setKeyConfigured(false);
             }}
           />
         )}

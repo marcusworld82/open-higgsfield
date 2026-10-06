@@ -19,6 +19,7 @@ const MAP: Record<string, Mapper> = {
   "seedance-2.5": (plane) => mapSeedance(plane, "bytedance/seedance-2.5"),
   "seedance-2.5-edit": (plane) => mapSeedanceSource(plane, "bytedance/seedance-2.5/video-edit", false),
   "seedance-2.5-extend": (plane) => mapSeedanceSource(plane, "bytedance/seedance-2.5/video-extend", true),
+  genjutsu: mapGenjutsu,
 };
 
 export function toPlatform(plane: GenerationPlane): Mapped {
@@ -182,6 +183,29 @@ function mapSeedance(plane: GenerationPlane, prefix: string): Mapped {
     path: `${prefix}/text-to-video`,
     body: { ...shared, aspect_ratio: plane.settings.aspectRatio },
   };
+}
+
+function mapGenjutsu(plane: GenerationPlane): Mapped {
+  const video = urls(plane, "video")[0];
+  const images = urls(plane, "reference");
+  const mode = plane.settings.mode === "object-swap" || plane.settings.mode === "restyle"
+    ? plane.settings.mode
+    : "motion-transfer";
+  const body: Record<string, unknown> = {
+    prompt: plane.prompt.text,
+    resolution: plane.settings.resolution ?? "720p",
+    ...(video ? { video_url: video } : {}),
+  };
+  if (mode === "restyle") {
+    const refs = images.slice(0, 5);
+    if (refs.length) body.image_urls = refs;
+    if (typeof plane.settings.presetId === "string" && plane.settings.presetId) {
+      body.preset_id = plane.settings.presetId;
+    }
+  } else if (images.length) {
+    body.image_urls = images.slice(0, 8);
+  }
+  return { path: `higgsfield/genjutsu/${mode}/v1.0`, body };
 }
 
 function mapSeedanceSource(plane: GenerationPlane, path: string, withDuration: boolean): Mapped {
