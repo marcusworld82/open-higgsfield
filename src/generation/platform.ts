@@ -79,8 +79,10 @@ export function createPlatformClient(options: PlatformClientOptions) {
     if (!source.ok) throw new PlatformError(400, { detail: `Could not read an input file (${source.status})` });
     let type = mediaType(source.headers.get("content-type") ?? "", url);
     let bytes: Uint8Array<ArrayBufferLike> = new Uint8Array(await source.arrayBuffer());
-    if (maxSeconds && (type === "video/mp4" || url.split("?")[0]?.toLowerCase().endsWith(".mp4"))) {
-      bytes = await clipVideo(bytes, maxSeconds);
+    const path = url.split("?")[0]?.toLowerCase() ?? "";
+    const video = type.startsWith("video/") || /\.(mp4|mov|m4v|webm)$/.test(path);
+    if (maxSeconds && video) {
+      bytes = await clipVideo(bytes, maxSeconds, type !== "video/mp4" && !path.endsWith(".mp4"));
       type = "video/mp4";
     }
     const created = asRecord(await send("POST", "/files/generate-upload-url", { content_type: type }));

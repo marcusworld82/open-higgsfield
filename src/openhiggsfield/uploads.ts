@@ -104,8 +104,9 @@ export function rememberUpload(
     picker's tabs are cut along. Anything unrecognised is treated as an image —
     the upload allow-list admits nothing else that could reach here. */
 export function kindOfFile(file: File): AssetKind {
-  if (file.type.startsWith("video/")) return "video";
-  if (file.type.startsWith("audio/")) return "audio";
+  const name = file.name.toLowerCase();
+  if (file.type.startsWith("video/") || /\.(mp4|mov|m4v|webm)$/.test(name)) return "video";
+  if (file.type.startsWith("audio/") || name.endsWith(".wav")) return "audio";
   return "image";
 }
 

@@ -188,7 +188,7 @@ export const ROLE_ACCEPT: Record<MediaRole, string> = {
   start: "image/jpeg,image/png,image/webp,image/gif",
   end: "image/jpeg,image/png,image/webp,image/gif",
   reference: "image/jpeg,image/png,image/webp,image/gif",
-  video: "video/mp4",
+  video: "video/mp4,video/quicktime,video/webm,video/x-m4v,.mp4,.mov,.m4v,.webm",
   audio: "audio/wav,audio/x-wav",
 };
 

@@ -4,8 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ffmpegPath from "ffmpeg-static";
 
-/** Wan 3.0 reference clips must be 15 seconds or shorter. Longer files are cut, not rejected. */
-export async function clipVideo(bytes: Uint8Array, seconds: number): Promise<Uint8Array> {
+/** Wan 3.0 reference clips must be 15 seconds or shorter, and Higgsfield only takes MP4.
+    Longer files are cut. MOV and WebM are re-encoded. */
+export async function clipVideo(
+  bytes: Uint8Array,
+  seconds: number,
+  alwaysMp4 = false,
+): Promise<Uint8Array> {
   if (!ffmpegPath) return bytes;
   const dir = await mkdtemp(join(tmpdir(), "clip-"));
   const input = join(dir, "in.mp4");
@@ -13,7 +18,7 @@ export async function clipVideo(bytes: Uint8Array, seconds: number): Promise<Uin
   try {
     await writeFile(input, bytes);
     const duration = await probe(ffmpegPath, input);
-    if (duration !== null && duration <= seconds + 0.05) return bytes;
+    if (!alwaysMp4 && duration !== null && duration <= seconds + 0.05) return bytes;
     await run(ffmpegPath, [
       "-y",
       "-i",
