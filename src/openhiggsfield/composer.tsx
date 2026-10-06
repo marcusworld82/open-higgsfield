@@ -87,10 +87,13 @@ export function Composer({
   const settings = useSettings();
   const values = parseSettings(model, settings.byModel[model.id] ?? {});
   const tray = useMediaTray(model, onError);
-  const videoReady = useVideoMedia((state) =>
-    state.items.some((item) => item.role === "video") &&
-    state.items.some((item) => item.role === "reference"),
-  );
+  const genjutsuMode = model.id === "genjutsu" ? String(values.mode) : "";
+  const videoReady = useVideoMedia((state) => {
+    if (!genjutsuMode) return true;
+    const hasVideo = state.items.some((item) => item.role === "video");
+    if (genjutsuMode === "restyle") return hasVideo;
+    return hasVideo && state.items.some((item) => item.role === "reference");
+  });
 
   const [overlay, setOverlay] = useState<string | null>(null);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
@@ -100,7 +103,7 @@ export function Composer({
   const promptRef = useRef<HTMLTextAreaElement>(null);
   /* A run in flight is not a lock: it holds its own tile in the grid, so the
      only thing that can stop a press is having nothing to say. */
-  const disabled = model.id === "genjutsu" ? !videoReady : prompt.text.trim().length === 0;
+  const disabled = genjutsuMode ? !videoReady : prompt.text.trim().length === 0;
 
   /* One batch control, two mechanisms. A model that declares its own
      results-per-request gets that setting written; the rest are submitted once
@@ -218,8 +221,10 @@ export function Composer({
   const settingKey = overlay?.startsWith(SETTING) ? overlay.slice(SETTING.length) : null;
   const generateLabel = batchValue > 1 ? `Generate ${batchValue} results` : "Generate";
   const generateTip = disabled
-    ? model.id === "genjutsu"
-      ? "Add a source video and at least one image"
+    ? genjutsuMode
+      ? genjutsuMode === "restyle"
+        ? "Add a source video"
+        : "Add a source video and at least one image"
       : "Write a prompt first"
     : `${generateLabel} · ${shortcut ?? "⌘↵"}`;
   const estimate = formatEstimate(estimateUsd(model, values, batchValue));

@@ -115,12 +115,24 @@ export function settingPillLabel(key: string): string {
    set in caps are lifted; "720p" and "16:9" are already how they are written. */
 export function settingValueLabel(key: string, value: unknown): string {
   if (typeof value === "boolean") return value ? "On" : "Off";
-  if (typeof value === "number") return key === "duration" ? `${value}s` : String(value);
   const text = String(value);
+  if (key === "duration") return `${text}s`;
   if (text === "auto") return "Auto";
   if (text === "motion-transfer") return "Motion";
   if (text === "object-swap") return "Swap";
   if (text === "restyle") return "Restyle";
+  if (text === "first-last") return "Start / end";
+  if (text === "image-reference") return "Image refs";
+  if (text === "video-edit") return "Video edit";
+  if (text === "video-reference") return "Video refs";
+  if (text === "text") return "Text";
+  if (text === "image") return "Start / end";
+  if (text === "reference") return "Reference";
+  if (text === "edit") return "Edit";
+  if (text === "standard") return "Standard";
+  if (text === "pro") return "Pro";
+  if (text === "4k") return "4K";
+  if (text === "std") return "Standard";
   if (text === "flare") return "Flare";
   if (text === "sunburst") return "Sunburst";
   if (/^\d+k$/.test(text)) return text.toUpperCase();
@@ -180,14 +192,33 @@ export const ROLE_ACCEPT: Record<MediaRole, string> = {
   audio: "audio/wav,audio/x-wav",
 };
 
-export function rolesOf(model: ModelEntry): MediaRole[] {
-  return Object.keys(model.roles) as MediaRole[];
+const ROLE_ORDER: MediaRole[] = ["start", "end", "reference", "video", "audio"];
+
+/** Slots for the mode the visitor has selected. The default mode applies before they touch the pill. */
+export function roleLimits(
+  model: ModelEntry,
+  settings?: Record<string, unknown>,
+): Partial<Record<MediaRole, number>> {
+  const field = model.settings.mode;
+  if (field?.type === "enum") {
+    const raw = settings?.mode;
+    const mode = typeof raw === "string" && field.values.includes(raw) ? raw : field.default;
+    const scoped = model.modeRoles?.[mode];
+    if (scoped) return scoped;
+  }
+  return model.roles;
 }
 
-export function defaultRole(model: ModelEntry): MediaRole {
-  if (model.surface === "image" && model.roles.reference) return "reference";
-  if (model.roles.start) return "start";
-  return rolesOf(model)[0] ?? "reference";
+export function rolesOf(model: ModelEntry, settings?: Record<string, unknown>): MediaRole[] {
+  const limits = roleLimits(model, settings);
+  return ROLE_ORDER.filter((role) => (limits[role] ?? 0) > 0);
+}
+
+export function defaultRole(model: ModelEntry, settings?: Record<string, unknown>): MediaRole {
+  const roles = rolesOf(model, settings);
+  if (model.surface === "image" && roles.includes("reference")) return "reference";
+  if (roles.includes("start")) return "start";
+  return roles[0] ?? "reference";
 }
 
 const RATIO = /^(\d+):(\d+)$/;
@@ -229,7 +260,14 @@ function joinPhrases(parts: string[]): string {
     stays the only place a model's truth is written down. */
 export function describeModel(model: ModelEntry): string {
   const noun = model.surface === "image" ? "Images" : "Video";
-  const inputs = [...new Set(rolesOf(model).map((role) => ROLE_PHRASES[role]))];
+  const slots: Partial<Record<MediaRole, number>> = { ...model.roles };
+  for (const extra of Object.values(model.modeRoles ?? {})) {
+    for (const role of ROLE_ORDER) {
+      const count = extra[role] ?? 0;
+      if (count > (slots[role] ?? 0)) slots[role] = count;
+    }
+  }
+  const inputs = [...new Set(ROLE_ORDER.filter((role) => (slots[role] ?? 0) > 0).map((role) => ROLE_PHRASES[role]))];
   const source = inputs.length
     ? `${noun} from a prompt, ${joinPhrases(inputs)}`
     : `${noun} from a prompt`;

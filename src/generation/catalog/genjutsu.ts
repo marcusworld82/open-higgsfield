@@ -1,12 +1,18 @@
 import type { ModelEntry } from "./types";
 
-/** Higgsfield Genjutsu. Motion transfer and object swap share one body; restyle adds a preset. */
+/** Motion transfer and object swap take a source video plus 1–8 references.
+ *  Restyle takes the video, a style preset, and up to 5 optional references. */
 export const genjutsu: ModelEntry = {
   id: "genjutsu",
   surface: "video",
   label: "Genjutsu",
   provider: "higgsfield",
   roles: { video: 1, reference: 8 },
+  modeRoles: {
+    "motion-transfer": { video: 1, reference: 8 },
+    "object-swap": { video: 1, reference: 8 },
+    restyle: { video: 1, reference: 5 },
+  },
   settings: {
     mode: {
       type: "enum",

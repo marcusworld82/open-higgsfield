@@ -385,8 +385,12 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
     if (entry.id === "genjutsu") {
       const hasVideo = (plane.media.video ?? []).length > 0;
       const hasImage = (plane.media.reference ?? []).length > 0;
-      if (!hasVideo || !hasImage) {
-        setError("Genjutsu needs a source video and at least one reference image.");
+      if (!hasVideo || (plane.settings.mode !== "restyle" && !hasImage)) {
+        setError(
+          plane.settings.mode === "restyle"
+            ? "Genjutsu restyle needs a source video."
+            : "Genjutsu needs a source video and at least one reference image.",
+        );
         return;
       }
     } else if (!plane.prompt.text.trim()) {

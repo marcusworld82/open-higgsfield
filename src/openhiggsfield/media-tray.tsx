@@ -5,9 +5,10 @@ import type { ReactNode } from "react";
 
 import type { MediaItem, MediaRole, ModelEntry } from "@/generation/catalog";
 import { useImageMedia, useVideoMedia } from "@/generation/stores/media";
+import { useSettings } from "@/generation/stores/settings";
 import { uploadMedia } from "@/generation/upload";
 
-import { ROLE_ACCEPT, ROLE_LABELS, ROLE_TAGS, rolesOf } from "./data";
+import { ROLE_ACCEPT, ROLE_LABELS, ROLE_TAGS, roleLimits, rolesOf } from "./data";
 import { AudioIcon, CloseIcon, VideoIcon } from "./icons";
 import { kindOfFile, loadUploads, mergeUploads, rememberUpload, saveUploads, type UploadRecord } from "./uploads";
 
@@ -44,6 +45,8 @@ export function useMediaTray(
   onError: (message: string | null) => void,
 ): MediaTray {
   const media = useMedia(model);
+  const stored = useSettings((state) => state.byModel[model.id]);
+  const limits = roleLimits(model, stored);
   const [uploading, setUploading] = useState(false);
   const [uploads, setUploads] = useState<UploadRecord[]>([]);
   const [staged, setStaged] = useState<string | null>(null);
@@ -73,12 +76,12 @@ export function useMediaTray(
     if (uploadsLoaded) void saveUploads(uploads);
   }, [uploadsLoaded, uploads]);
 
-  const roles = rolesOf(model);
+  const roles = rolesOf(model, stored);
   const counts: Record<string, number> = {};
   for (const role of roles) {
     counts[role] = media.items.filter((item) => item.role === role).length;
   }
-  const allFull = roles.length > 0 && roles.every((role) => counts[role]! >= (model.roles[role] ?? 0));
+  const allFull = roles.length > 0 && roles.every((role) => counts[role]! >= (limits[role] ?? 0));
 
   async function onFile(file: File | undefined) {
     if (!file) return;
@@ -154,7 +157,9 @@ export function useMediaTray(
 /** Attached inputs, above the prompt — the frames read before the words do. */
 export function MediaStrip({ model }: { model: ModelEntry }) {
   const media = useMedia(model);
-  const items = media.items.filter((item) => model.roles[item.role]);
+  const stored = useSettings((state) => state.byModel[model.id]);
+  const limits = roleLimits(model, stored);
+  const items = media.items.filter((item) => limits[item.role]);
   if (items.length === 0) return null;
 
   return (

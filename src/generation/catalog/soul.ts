@@ -20,6 +20,6 @@ export const soul2: ModelEntry = {
   id: "soul-2",
   surface: "image",
   label: "Soul 2",
-  roles: {},
+  roles: { start: 1 },
   settings: soulSettings,
 };

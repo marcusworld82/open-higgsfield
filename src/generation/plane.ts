@@ -1,5 +1,6 @@
 import { getModel, parseSettings } from "./catalog";
 import type { GenerationPlane } from "./catalog/types";
+import { roleLimits } from "@/openhiggsfield/data";
 import { useActive } from "./stores/active";
 import { useImageMedia, useVideoMedia } from "./stores/media";
 import { useImagePrompt, useVideoPrompt } from "./stores/prompt";
@@ -10,9 +11,11 @@ export function assemblePlane(): GenerationPlane {
   const model = getModel(modelId);
   const text = (surface === "image" ? useImagePrompt : useVideoPrompt).getState().text;
   const items = (surface === "image" ? useImageMedia : useVideoMedia).getState().items;
+  const raw = useSettings.getState().byModel[model.id] ?? {};
+  const limits = roleLimits(model, raw);
   const media: GenerationPlane["media"] = {};
   for (const item of items) {
-    const max = model.roles[item.role];
+    const max = limits[item.role];
     if (!max) continue;
     const list = media[item.role] ?? [];
     if (list.length >= max) continue;
@@ -23,6 +26,6 @@ export function assemblePlane(): GenerationPlane {
     model: model.id,
     prompt: { text },
     media,
-    settings: parseSettings(model, useSettings.getState().byModel[model.id] ?? {}),
+    settings: parseSettings(model, raw),
   };
 }

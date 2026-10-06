@@ -1,8 +1,25 @@
-import { t2v, videoModel } from "./defaults";
+import type { ModelEntry } from "./types";
 
-export const minimaxHailuo23 = videoModel(
-  "minimax-hailuo-2.3",
-  "MiniMax Hailuo 2.3",
-  { start: 1 },
-  t2v("minimax/hailuo-2.3/standard/text-to-video"),
-);
+/** Start frame only. Durations are 6 or 10 seconds. */
+export const minimaxHailuo23: ModelEntry = {
+  id: "minimax-hailuo-2.3",
+  surface: "video",
+  label: "MiniMax Hailuo 2.3",
+  roles: { start: 1 },
+  settings: {
+    duration: { type: "enum", values: ["6", "10"], default: "6" },
+    promptOptimizer: { type: "boolean", default: true },
+  },
+  routes: {
+    text: {
+      path: "minimax/hailuo-2.3/standard/text-to-video",
+      shape: "text",
+      fields: ["duration", "optimizer"],
+    },
+    image: {
+      path: "minimax/hailuo-2.3/standard/image-to-video",
+      shape: "image",
+      fields: ["duration", "optimizer"],
+    },
+  },
+};

@@ -1,5 +1,5 @@
 import { getModel } from "./catalog";
-import type { GenerationPlane, PlatformPaths } from "./catalog/types";
+import type { GenerationPlane, ModelEntry, ModelRoute, PlatformPaths } from "./catalog/types";
 
 type Mapped = { path: string; body: Record<string, unknown> };
 type Mapper = (plane: GenerationPlane) => Mapped;
@@ -20,11 +20,15 @@ const MAP: Record<string, Mapper> = {
   "seedance-2.5-edit": (plane) => mapSeedanceSource(plane, "bytedance/seedance-2.5/video-edit", false),
   "seedance-2.5-extend": (plane) => mapSeedanceSource(plane, "bytedance/seedance-2.5/video-extend", true),
   genjutsu: mapGenjutsu,
+  "kling-2.5": mapKling25,
 };
 
 export function toPlatform(plane: GenerationPlane): Mapped {
   const model = getModel(plane.model);
-  const map = MAP[model.id] ?? (model.paths ? (next) => mapByPaths(next, model.paths!) : undefined);
+  const map =
+    MAP[model.id] ??
+    (model.routes ? (next) => mapRoutes(next, model) : undefined) ??
+    (model.paths ? (next) => mapByPaths(next, model.paths!) : undefined);
   if (!map) throw new Error(`No platform map for ${plane.model}`);
   return map(plane);
 }
@@ -34,16 +38,119 @@ function urls(plane: GenerationPlane, role: "start" | "end" | "reference" | "vid
 }
 
 function mapSoul(plane: GenerationPlane, path: string): Mapped {
+  const start = urls(plane, "start")[0];
+  const imagePath = plane.model === "soul-2" ? "higgsfield-ai/soul/v2/image-to-image" : path;
   return {
-    path,
+    path: start ? imagePath : path,
     body: {
       prompt: plane.prompt.text,
       batch_size: Number(plane.settings.batchSize),
       resolution: plane.settings.resolution,
       aspect_ratio: plane.settings.aspectRatio,
       enhance_prompt: plane.settings.enhancePrompt,
+      ...(start ? { image_url: start } : {}),
     },
   };
+}
+
+function mapKling25(plane: GenerationPlane): Mapped {
+  const tier = plane.settings.tier === "standard" ? "standard" : "pro";
+  const start = urls(plane, "start")[0];
+  if (!start && tier === "standard") throw new Error("Kling 2.5 Standard needs a start frame");
+  return {
+    path: start
+      ? `kling-video/v2.5-turbo/${tier}/image-to-video`
+      : "kling-video/v2.5-turbo/pro/text-to-video",
+    body: {
+      prompt: plane.prompt.text,
+      duration: Number(plane.settings.duration),
+      cfg_scale: plane.settings.cfgScale,
+      ...(start ? { image_url: start } : {}),
+    },
+  };
+}
+
+function mapRoutes(plane: GenerationPlane, model: ModelEntry): Mapped {
+  const routes = model.routes ?? {};
+  const mode = typeof plane.settings.mode === "string" ? plane.settings.mode : "";
+  let route = (mode && routes[mode]) || routes.image || routes.text || routes.default;
+  const start = urls(plane, "start")[0];
+  if (!mode && start && routes.image) route = routes.image;
+  if (!mode && !start && routes.text) route = routes.text;
+  if (!route) throw new Error(`No platform route for ${model.id}`);
+  if ((route.shape === "image" || route.shape === "frames" || route.shape === "motion") && !start && routes.text && mode !== "image" && mode !== "first-last") {
+    route = routes.text;
+  }
+  if ((route.shape === "image" || route.shape === "frames" || route.shape === "motion") && !start) {
+    throw new Error("Add a start frame");
+  }
+  if (route.shape === "source" && !urls(plane, "video")[0]) throw new Error("Add a source video");
+  return { path: route.path, body: routeBody(plane, route) };
+}
+
+function routeBody(plane: GenerationPlane, route: ModelRoute): Record<string, unknown> {
+  const settings = plane.settings;
+  const allow = new Set(route.fields);
+  const body: Record<string, unknown> = { prompt: plane.prompt.text };
+  if (allow.has("duration") && settings.duration !== undefined) {
+    const duration = Number(settings.duration);
+    body.duration = route.maxDuration ? Math.min(duration, route.maxDuration) : duration;
+  }
+  if (allow.has("resolution") && typeof settings.resolution === "string") body.resolution = settings.resolution;
+  if (allow.has("aspect") && typeof settings.aspectRatio === "string") body.aspect_ratio = settings.aspectRatio;
+  if (allow.has("sound")) body.sound = settings.sound ? "on" : "off";
+  if (allow.has("cfg") && typeof settings.cfgScale === "number") body.cfg_scale = settings.cfgScale;
+  if (allow.has("audioFlag")) body.generate_audio = settings.generateAudio !== false;
+  if (allow.has("thinking")) body.enable_thinking = Boolean(settings.enableThinking);
+  if (allow.has("extend")) body.prompt_extend = Boolean(settings.promptExtend);
+  if (allow.has("tier") && typeof settings.tier === "string") {
+    body.mode = route.maxTier === "pro" && settings.tier === "4k" ? "pro" : settings.tier;
+  }
+  if (allow.has("multi")) body.multi_shots = Boolean(settings.multiShots);
+  if (allow.has("format") && typeof settings.outputFormat === "string") body.output_format = settings.outputFormat;
+  if (allow.has("fps")) body.fps = Number(settings.fps);
+  if (allow.has("camera") && typeof settings.cameraMovement === "string") body.camera_movement = settings.cameraMovement;
+  if (allow.has("optimizer")) body.prompt_optimizer = Boolean(settings.promptOptimizer);
+  if (allow.has("watermark")) body.aigc_watermark = Boolean(settings.aigcWatermark);
+  if (allow.has("shot") && typeof settings.shotType === "string") body.shot_type = settings.shotType;
+  if (allow.has("quality") && typeof settings.quality === "string") body.quality = settings.quality;
+  if (allow.has("rendering") && typeof settings.renderingSpeed === "string") body.rendering_speed = settings.renderingSpeed;
+  if (allow.has("weight") && typeof settings.imageWeight === "number") body.image_weight = settings.imageWeight;
+
+  const start = urls(plane, "start")[0];
+  const end = urls(plane, "end")[0];
+  const refs = urls(plane, "reference");
+  const videos = urls(plane, "video");
+  const audios = urls(plane, "audio");
+  if (route.shape === "image" && start) {
+    body.image_url = start;
+    if (end) body[route.endKey ?? "last_image_url"] = end;
+  }
+  if (route.shape === "frames" || route.frames) {
+    if (start) body.first_frame_url = start;
+    if (end) body.last_frame_url = end;
+  }
+  if (route.shape === "motion") {
+    if (start) body.image_url = start;
+    const video = videos[0];
+    if (video) body.video_url = video;
+  }
+  if (route.shape === "reference" || route.shape === "source") {
+    if (route.shape === "reference" && start && !route.frames) body.image_url = start;
+    if (refs.length) body.image_urls = refs;
+    if (route.shape === "source") {
+      const [video, ...rest] = videos;
+      if (video) body.video_url = video;
+      if (rest.length) body.video_urls = rest;
+    } else if (videos.length) {
+      body.video_urls = videos;
+    }
+  }
+  if (audios.length && route.audio) {
+    if (route.audio === "audio_url") body.audio_url = audios[0];
+    else body.audio_urls = audios;
+  }
+  return body;
 }
 
 function mapKlingTurbo(plane: GenerationPlane): Mapped {

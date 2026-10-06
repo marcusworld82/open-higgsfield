@@ -3,8 +3,9 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 import type { MediaItem, MediaRole, ModelEntry } from "@/generation/catalog";
+import { useSettings } from "@/generation/stores/settings";
 
-import { ROLE_KINDS, ROLE_LABELS, defaultRole, roleNoun, rolesOf, type AssetKind } from "./data";
+import { ROLE_KINDS, ROLE_LABELS, defaultRole, roleLimits, roleNoun, rolesOf, type AssetKind } from "./data";
 import type { RunRecord } from "./history";
 import {
   AssetsIcon,
@@ -62,8 +63,10 @@ export function AssetPicker({
   onApply: (role: MediaRole, urls: string[]) => void;
   onClose: () => void;
 }) {
-  const roles = rolesOf(model);
-  const [role, setRole] = useState<MediaRole>(() => defaultRole(model));
+  const stored = useSettings((state) => state.byModel[model.id]);
+  const limits = roleLimits(model, stored);
+  const roles = rolesOf(model, stored);
+  const [role, setRole] = useState<MediaRole>(() => defaultRole(model, stored));
   /* null until the visitor picks a shelf: the panel opens on whichever one
      actually holds something, so someone who has generated all day and
      uploaded nothing does not land on an empty tab. */
@@ -72,11 +75,11 @@ export function AssetPicker({
      already on the plane, so an attached tile opens marked and can be pressed
      off again. An array, not a Set: the order picked is the order attached,
      and a start/end pair is not order-blind. */
-  const [selected, setSelected] = useState<string[]>(() => urlsOf(items, defaultRole(model)));
+  const [selected, setSelected] = useState<string[]>(() => urlsOf(items, defaultRole(model, stored)));
   const tabsRef = useRef<HTMLDivElement>(null);
 
   const kind = ROLE_KINDS[role];
-  const max = model.roles[role] ?? 0;
+  const max = limits[role] ?? 0;
   const current = useMemo(() => urlsOf(items, role), [items, role]);
   const room = Math.max(0, max - selected.length);
 
@@ -124,9 +127,9 @@ export function AssetPicker({
      slot instead of closing, so the second frame is one more click, not a
      reopen plus a confirm. */
   function advanceOrClose(filled: MediaRole) {
-    if (filled === "start" && (model.roles.end ?? 0) > 0) {
+    if (filled === "start" && (limits.end ?? 0) > 0) {
       const endUsed = items.filter((item) => item.role === "end").length;
-      if (endUsed < (model.roles.end ?? 0)) {
+      if (endUsed < (limits.end ?? 0)) {
         pickRole("end");
         return;
       }
@@ -261,7 +264,7 @@ export function AssetPicker({
               >
                 {ROLE_LABELS[entry]}
                 <span className="ohf-chip-count">
-                  {used}/{model.roles[entry] ?? 0}
+                  {used}/{limits[entry] ?? 0}
                 </span>
               </button>
             );
