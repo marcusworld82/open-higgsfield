@@ -1,3 +1,4 @@
+import { clipVideo } from "./clip";
 import { toAuthorizationHeader } from "./credentials";
 
 const MODEL_ID = /^[a-z0-9][a-z0-9._/-]*$/i;
@@ -70,14 +71,18 @@ export function createPlatformClient(options: PlatformClientOptions) {
 
   const hosted = new Map<string, string>();
 
-  async function rehostUrl(url: string): Promise<string> {
+  async function rehostUrl(url: string, maxSeconds?: number): Promise<string> {
     if (!url.startsWith("http") || url.includes("higgsfield.ai")) return url;
-    const cached = hosted.get(url);
+    const cached = hosted.get(`${url}:${maxSeconds ?? ""}`);
     if (cached) return cached;
     const source = await fetchImpl(url);
     if (!source.ok) throw new PlatformError(400, { detail: `Could not read an input file (${source.status})` });
-    const type = mediaType(source.headers.get("content-type") ?? "", url);
-    const bytes = new Uint8Array(await source.arrayBuffer());
+    let type = mediaType(source.headers.get("content-type") ?? "", url);
+    let bytes: Uint8Array<ArrayBufferLike> = new Uint8Array(await source.arrayBuffer());
+    if (maxSeconds && (type === "video/mp4" || url.split("?")[0]?.toLowerCase().endsWith(".mp4"))) {
+      bytes = await clipVideo(bytes, maxSeconds);
+      type = "video/mp4";
+    }
     const created = asRecord(await send("POST", "/files/generate-upload-url", { content_type: type }));
     const uploadUrl = stringField(created, "upload_url");
     const publicUrl = stringField(created, "public_url");
@@ -87,21 +92,31 @@ export function createPlatformClient(options: PlatformClientOptions) {
       if (typeof value === "string") headers[key] = value;
     }
     if (!headers["Content-Type"] && !headers["content-type"]) headers["Content-Type"] = type;
-    const put = await fetchImpl(uploadUrl, { method: "PUT", headers, body: bytes });
+    const payload = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(payload).set(bytes);
+    const put = await fetchImpl(uploadUrl, { method: "PUT", headers, body: payload });
     if (!put.ok) throw new PlatformError(put.status, { detail: "Could not store an input on Higgsfield" });
-    hosted.set(url, publicUrl);
+    hosted.set(`${url}:${maxSeconds ?? ""}`, publicUrl);
     return publicUrl;
   }
 
   async function rehostInputs(input: Record<string, unknown>): Promise<Record<string, unknown>> {
     const next = { ...input };
-    for (const key of ["image_url", "end_image_url", "last_image_url", "video_url", "first_frame_url", "last_frame_url", "audio_url"]) {
+    const outputSeconds = typeof next.duration === "number" ? next.duration : 5;
+    const videoCap = Math.min(15, Math.max(1, 30 - outputSeconds));
+    for (const key of ["image_url", "end_image_url", "last_image_url", "first_frame_url", "last_frame_url", "audio_url"]) {
       if (typeof next[key] === "string") next[key] = await rehostUrl(next[key]);
     }
-    for (const key of ["image_urls", "video_urls", "audio_urls"]) {
+    if (typeof next.video_url === "string") next.video_url = await rehostUrl(next.video_url, videoCap);
+    for (const key of ["image_urls", "audio_urls"]) {
       if (!Array.isArray(next[key])) continue;
       next[key] = await Promise.all(
         next[key].map((item) => (typeof item === "string" ? rehostUrl(item) : Promise.resolve(item))),
+      );
+    }
+    if (Array.isArray(next.video_urls)) {
+      next.video_urls = await Promise.all(
+        next.video_urls.map((item) => (typeof item === "string" ? rehostUrl(item, videoCap) : Promise.resolve(item))),
       );
     }
     return next;

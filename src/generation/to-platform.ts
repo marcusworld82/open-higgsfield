@@ -37,6 +37,13 @@ function urls(plane: GenerationPlane, role: "start" | "end" | "reference" | "vid
   return (plane.media[role] ?? []).map((item) => item.url);
 }
 
+function cite(prompt: string): string {
+  return prompt
+    .replace(/@image\s*(\d+)/gi, "Image $1")
+    .replace(/@video\s*(\d+)/gi, "Video $1")
+    .replace(/@audio\s*(\d+)/gi, "Audio $1");
+}
+
 function mapSoul(plane: GenerationPlane, path: string): Mapped {
   const start = urls(plane, "start")[0];
   const imagePath = plane.model === "soul-2" ? "higgsfield-ai/soul/v2/image-to-image" : path;
@@ -91,7 +98,9 @@ function mapRoutes(plane: GenerationPlane, model: ModelEntry): Mapped {
 function routeBody(plane: GenerationPlane, route: ModelRoute): Record<string, unknown> {
   const settings = plane.settings;
   const allow = new Set(route.fields);
-  const body: Record<string, unknown> = { prompt: plane.prompt.text };
+  const body: Record<string, unknown> = {
+    prompt: route.shape === "reference" || route.shape === "source" ? cite(plane.prompt.text) : plane.prompt.text,
+  };
   if (allow.has("duration") && settings.duration !== undefined) {
     const duration = Number(settings.duration);
     body.duration = route.maxDuration ? Math.min(duration, route.maxDuration) : duration;
