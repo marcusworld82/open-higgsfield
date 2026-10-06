@@ -13,8 +13,9 @@ import { CloseIcon } from "./icons";
 
 const HINTS: Record<ProviderId, string> = {
   higgsfield: "Paste the Higgsfield key as id:secret. It runs the catalog, including Genjutsu.",
-  openai: "Paste an OpenAI API key. GPT Image 2.5 (Flare and Sunburst) uses this key.",
-  google: "Paste a Google AI Studio key. Nano Banana Pro (Gemini 3 Pro Image) uses this key.",
+  openai: "Paste an OpenAI API key. Used for GPT Image 2.5 only when no KIE.AI key is saved.",
+  google: "Paste a Google AI Studio key. Used for Nano Banana Pro only when no KIE.AI key is saved.",
+  kie: "Paste a KIE.AI key from kie.ai/api-key. GPT Image 2.5 and Nano Banana Pro use this key.",
 };
 
 export function KeyModal({

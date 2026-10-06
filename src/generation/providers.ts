@@ -27,6 +27,114 @@ export async function generateOpenAIImage(
   return { status: "completed", requestId: "", images: [{ url }] };
 }
 
+const KIE_BASE = "https://api.kie.ai";
+
+/** Queues GPT Image 2.5 or Nano Banana Pro on KIE. Returns the KIE task id. */
+export async function submitKie(apiKey: string, plane: GenerationPlane): Promise<string> {
+  const response = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(kieBody(plane)),
+  });
+  const payload = await readJson(response);
+  const record = asRecord(payload);
+  const taskId = asRecord(record.data).taskId;
+  const code = typeof record.code === "number" ? record.code : response.status;
+  if (!response.ok || code !== 200 || typeof taskId !== "string" || !taskId) {
+    throw new Error(kieMessage(payload) || `KIE.AI failed (${response.status})`);
+  }
+  return taskId;
+}
+
+export async function kieStatus(apiKey: string, taskId: string): Promise<GenerationStatus> {
+  const requestId = `kie:${taskId}`;
+  const response = await fetch(
+    `${KIE_BASE}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
+    { headers: { Authorization: `Bearer ${apiKey}` } },
+  );
+  const payload = await readJson(response);
+  const record = asRecord(payload);
+  const data = asRecord(record.data);
+  const code = typeof record.code === "number" ? record.code : response.status;
+  if (!response.ok || (code !== 200 && code !== 0)) {
+    throw new Error(kieMessage(payload) || `KIE.AI status failed (${response.status})`);
+  }
+  const state = typeof data.state === "string" ? data.state : "waiting";
+  if (state === "success") {
+    const urls = kieResultUrls(data.resultJson);
+    if (urls.length === 0) throw new Error("KIE.AI finished without an image");
+    return { status: "completed", requestId, images: urls.map((url) => ({ url })) };
+  }
+  if (state === "fail") {
+    const failMsg = typeof data.failMsg === "string" && data.failMsg ? data.failMsg : "KIE.AI reported a failure";
+    return { status: "failed", requestId, error: failMsg };
+  }
+  return { status: "queued", requestId };
+}
+
+function kieBody(plane: GenerationPlane): { model: string; input: Record<string, unknown> } {
+  if (plane.model === "nano-banana-pro") {
+    const resolution = String(plane.settings.resolution ?? "1k").toUpperCase();
+    return {
+      model: "nano-banana-pro",
+      input: {
+        prompt: plane.prompt.text,
+        image_input: httpUrls(plane, 8),
+        aspect_ratio: plane.settings.aspectRatio ?? "1:1",
+        resolution: resolution === "2K" || resolution === "4K" ? resolution : "1K",
+        output_format: "png",
+      },
+    };
+  }
+  if (plane.model === "gpt-image-2.5") {
+    const variant = plane.settings.variant === "sunburst" ? "sunburst" : "flare";
+    const refs = httpUrls(plane, 4);
+    const quality = String(plane.settings.quality ?? "high");
+    const input: Record<string, unknown> = {
+      prompt: plane.prompt.text,
+      aspect_ratio: plane.settings.aspectRatio ?? "1:1",
+      resolution: quality === "high" ? "2K" : "1K",
+    };
+    if (refs.length > 0) input.input_urls = refs;
+    return {
+      model: `gpt-image-2-5-${variant}-${refs.length > 0 ? "image-to-image" : "text-to-image"}`,
+      input,
+    };
+  }
+  throw new Error("KIE.AI runs GPT Image 2.5 and Nano Banana Pro");
+}
+
+function httpUrls(plane: GenerationPlane, limit: number): string[] {
+  return (plane.media.reference ?? [])
+    .map((item) => item.url)
+    .filter((url) => url.startsWith("http://") || url.startsWith("https://"))
+    .slice(0, limit);
+}
+
+function kieResultUrls(resultJson: unknown): string[] {
+  const raw = typeof resultJson === "string" ? parseMaybe(resultJson) : resultJson;
+  const urls = asRecord(raw).resultUrls;
+  if (!Array.isArray(urls)) return [];
+  return urls.filter((url): url is string => typeof url === "string" && url.length > 0);
+}
+
+function parseMaybe(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function kieMessage(payload: unknown): string {
+  const record = asRecord(payload);
+  if (typeof record.msg === "string" && record.msg && record.msg !== "success") return record.msg;
+  return messageFrom(payload);
+}
+
 export async function generateNanoBanana(
   apiKey: string,
   plane: GenerationPlane,

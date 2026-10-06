@@ -201,10 +201,11 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
     higgsfield: false,
     openai: false,
     google: false,
+    kie: false,
   });
   const [keyProvider, setKeyProvider] = useState<ProviderId>("higgsfield");
   const [keysOpen, setKeysOpen] = useState(false);
-  const keyConfigured = keys.higgsfield || keys.openai || keys.google;
+  const keyConfigured = keys.higgsfield || keys.openai || keys.google || keys.kie;
 
   const galleryRef = useRef<HTMLDivElement>(null);
   const rangeAnchor = useRef<number | null>(null);
@@ -264,7 +265,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
   useEffect(() => {
     void hasPlatformCredentials().then((ready) => {
       setKeys(ready);
-      if (!ready.higgsfield && !ready.openai && !ready.google) setKeysOpen(true);
+      if (!ready.higgsfield && !ready.openai && !ready.google && !ready.kie) setKeysOpen(true);
     });
   }, []);
 
@@ -369,10 +370,16 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
     const plane = assemblePlane();
     const entry = getModel(plane.model);
     const needed = providerOfModel(entry.provider);
-    if (!keys[needed]) {
-      setKeyProvider(needed);
+    const coveredByKie = (needed === "openai" || needed === "google") && keys.kie;
+    if (!keys[needed] && !coveredByKie) {
+      const promptFor = needed === "higgsfield" ? "higgsfield" : "kie";
+      setKeyProvider(promptFor);
       setKeysOpen(true);
-      setError(`Add your ${PROVIDER_LABELS[needed]} key to generate.`);
+      setError(
+        needed === "higgsfield"
+          ? "Add your Higgsfield key to generate."
+          : "Add your KIE.AI key to generate. OpenAI or Google still work if you save those instead.",
+      );
       return;
     }
     if (entry.id === "genjutsu") {

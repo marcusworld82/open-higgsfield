@@ -18,7 +18,7 @@ import {
 } from "./credentials";
 import { createPlatformClient } from "./platform";
 import type { GenerationStatus, StatusResult } from "./platform";
-import { firstGenjutsuPreset, generateNanoBanana, generateOpenAIImage } from "./providers";
+import { firstGenjutsuPreset, generateNanoBanana, generateOpenAIImage, kieStatus, submitKie } from "./providers";
 import { toPlatform } from "./to-platform";
 
 const DEFAULT_HF_BASE = "https://api.higgsfield.ai";
@@ -60,6 +60,7 @@ export async function hasPlatformCredentials(): Promise<KeyPresence> {
     higgsfield: Boolean(stored?.higgsfield),
     openai: Boolean(stored?.openai),
     google: Boolean(stored?.google),
+    kie: Boolean(stored?.kie),
   };
 }
 
@@ -70,6 +71,11 @@ export async function submitGeneration(plane: GenerationPlane): Promise<SubmitRe
     settings: parseSettings(model, plane.settings),
   };
   const provider = providerOfModel(model.provider);
+  const stored = (await readStoredCredentials()) ?? {};
+  if ((provider === "openai" || provider === "google") && stored.kie) {
+    const taskId = await submitKie(stored.kie, parsed);
+    return { requestId: `kie:${taskId}` };
+  }
   const keys = await readCredentials(provider);
 
   if (provider === "openai") {
@@ -96,17 +102,42 @@ export async function submitGeneration(plane: GenerationPlane): Promise<SubmitRe
 
 export async function getGenerationStatuses(data: unknown): Promise<StatusResult[]> {
   const requestIds = parseRequestIds(data);
-  const keys = await readCredentials("higgsfield");
-  const client = createPlatformClient({ apiKey: keys.higgsfield!, baseUrl: keys.baseUrl });
-  return Promise.all(
-    requestIds.map(async (requestId): Promise<StatusResult> => {
-      try {
-        return { requestId, status: await client.status(requestId) };
-      } catch (caught) {
-        return { requestId, error: caught instanceof Error ? caught.message : String(caught) };
-      }
-    }),
-  );
+  const kieIds = requestIds.filter((requestId) => requestId.startsWith("kie:"));
+  const platformIds = requestIds.filter((requestId) => !requestId.startsWith("kie:"));
+  const results: StatusResult[] = [];
+
+  if (kieIds.length > 0) {
+    const keys = await readCredentials("kie");
+    results.push(
+      ...(await Promise.all(
+        kieIds.map(async (requestId): Promise<StatusResult> => {
+          try {
+            return { requestId, status: await kieStatus(keys.kie!, requestId.slice(4)) };
+          } catch (caught) {
+            return { requestId, error: caught instanceof Error ? caught.message : String(caught) };
+          }
+        }),
+      )),
+    );
+  }
+
+  if (platformIds.length > 0) {
+    const keys = await readCredentials("higgsfield");
+    const client = createPlatformClient({ apiKey: keys.higgsfield!, baseUrl: keys.baseUrl });
+    results.push(
+      ...(await Promise.all(
+        platformIds.map(async (requestId): Promise<StatusResult> => {
+          try {
+            return { requestId, status: await client.status(requestId) };
+          } catch (caught) {
+            return { requestId, error: caught instanceof Error ? caught.message : String(caught) };
+          }
+        }),
+      )),
+    );
+  }
+
+  return results;
 }
 
 async function readStoredCredentials(): Promise<KeyMap | null> {

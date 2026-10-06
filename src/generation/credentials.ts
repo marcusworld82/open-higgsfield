@@ -8,14 +8,16 @@ export const PLATFORM_KEY_COOKIE_OPTIONS = {
   maxAge: 60 * 60 * 24 * 30,
 };
 
-/** Higgsfield runs the catalog. OpenAI is GPT Image 2.5. Google is Nano Banana Pro. */
-export const PROVIDERS = ["higgsfield", "openai", "google"] as const;
+/** Higgsfield runs the catalog. KIE.AI covers GPT Image 2.5 and Nano Banana Pro.
+ *  OpenAI and Google remain direct fallbacks when no KIE key is saved. */
+export const PROVIDERS = ["higgsfield", "openai", "google", "kie"] as const;
 export type ProviderId = (typeof PROVIDERS)[number];
 
 export const PROVIDER_LABELS: Record<ProviderId, string> = {
   higgsfield: "Higgsfield",
   openai: "OpenAI",
   google: "Google AI",
+  kie: "KIE.AI",
 };
 
 export type KeyMap = Partial<Record<ProviderId, string>>;
@@ -79,7 +81,7 @@ export function providerOfModel(provider: ProviderId | undefined): ProviderId {
 
 function parseProvider(value: unknown): ProviderId {
   if (value === undefined || value === "higgsfield") return "higgsfield";
-  if (value === "openai" || value === "google") return value;
+  if (value === "openai" || value === "google" || value === "kie") return value;
   throw new Error("Pick a provider");
 }
 
@@ -92,6 +94,6 @@ function requireProviderKey(provider: ProviderId, apiKey: string): string {
       throw new Error("Higgsfield key must be id:secret");
     }
   }
-  if (trimmed.length > 400) throw new Error("That key is too long");
+  if (trimmed.length > (provider === "kie" ? 800 : 400)) throw new Error("That key is too long");
   return trimmed;
 }
