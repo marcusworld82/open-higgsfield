@@ -127,7 +127,7 @@ export function settingValueLabel(key: string, value: unknown): string {
   if (text === "video-reference") return "Video refs";
   if (text === "text") return "Text";
   if (text === "image") return "Start / end";
-  if (text === "reference") return "Reference";
+  if (text === "reference") return "Video";
   if (text === "edit") return "Edit";
   if (text === "standard") return "Standard";
   if (text === "pro") return "Pro";

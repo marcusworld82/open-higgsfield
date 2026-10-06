@@ -158,10 +158,7 @@ function failureText(status: GenerationStatus): string {
 function bannerFor(record: { error?: string; modelId?: string } | undefined): string {
   const reason = record?.error || "the provider reported a failure";
   if (reason === "Generation failed") {
-    const wanReference = record?.modelId === "wan-3" || record?.modelId === "wan-3-prime";
-    return wanReference
-      ? "Higgsfield accepted the job and failed it, with no reason. Nothing was charged. Keeping a video's motion and swapping the person is Genjutsu Motion, not Wan reference. Switch to Genjutsu, mode Motion, and use the same video and images."
-      : "Higgsfield accepted the job and failed it, with no reason. Nothing was charged. Retry the same prompt.";
+    return "Higgsfield accepted the job and failed it, with no reason. Nothing was charged. Retry it.";
   }
   return `Run not delivered — ${reason}.`;
 }
