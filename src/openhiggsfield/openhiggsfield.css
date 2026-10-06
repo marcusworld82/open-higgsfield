@@ -342,7 +342,10 @@
 
 .ohf-shell {
   height: 100dvh;
+  max-width: 100%;
   overflow: hidden;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
   background: var(--bg);
   position: relative;
 }
@@ -563,7 +566,6 @@
   display: block;
   width: 100%;
   margin: 0;
-  aspect-ratio: 4 / 3;
   border-radius: 14px;
   position: relative;
   overflow: hidden;
@@ -574,6 +576,7 @@
   isolation: isolate;
   content-visibility: auto;
   contain-intrinsic-size: auto 220px;
+  aspect-ratio: var(--ohf-card, 4 / 3);
   transition:
     border-color 0.2s ease,
     border-width 0.26s var(--ease-slide),
@@ -985,7 +988,7 @@
   overflow: hidden;
   width: 100%;
   margin: 0;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: var(--ohf-card, 4 / 3);
   border-radius: 14px;
   border: 1px solid var(--line);
   /* The plate rests and the light that crosses it is a layer of its own, so a
@@ -1319,6 +1322,18 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  background: #111;
+}
+.ohf video.ohf-strip-thumb,
+.ohf video.ohf-asset-media {
+  pointer-events: none;
+}
+.ohf video.ohf-strip-thumb::-webkit-media-controls,
+.ohf video.ohf-asset-media::-webkit-media-controls,
+.ohf video.ohf-asset-media::-webkit-media-controls-start-playback-button,
+.ohf video.ohf-strip-thumb::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  -webkit-appearance: none;
 }
 /* Video and audio uploads have no still to show, so the drawn mark stands in. */
 .ohf-strip-glyph {
@@ -3589,8 +3604,8 @@ a.ohf-btn-solid {
     max-height: min(58vh, 460px);
   }
   .ohf-assets-grid {
-    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
     padding: 12px;
   }
   .ohf-assets-roles {
@@ -3600,19 +3615,49 @@ a.ohf-btn-solid {
 
 @media (max-width: 560px) {
   .ohf-topbar {
-    padding: 10px 14px 0;
+    max-width: 100%;
+    padding: 10px 12px 0;
+    padding-top: max(10px, env(safe-area-inset-top));
+  }
+  .ohf-bar {
+    max-width: 100%;
+    min-width: 0;
+  }
+  .ohf-tabs {
+    min-width: 0;
   }
   .ohf-gallery {
     --ohf-fade: 56px;
-    padding: 64px 14px 8px;
+    padding: 64px 12px 8px;
+  }
+  .ohf-grid {
+    column-gap: 0;
   }
   .ohf-dock {
-    padding-left: 14px;
-    padding-right: 14px;
+    padding: 8px 12px max(18px, env(safe-area-inset-bottom));
   }
-  .ohf-bar {
-    height: 42px;
+  .ohf-strip {
+    gap: 12px;
+    padding: 14px 12px 2px;
+  }
+  .ohf-strip-tile {
+    width: 84px;
+    height: 84px;
     border-radius: 14px;
+  }
+  .ohf-composer-head {
+    padding: 12px 12px 4px;
+    gap: 12px;
+  }
+  .ohf-composer-row {
+    padding: 6px 12px 12px;
+    gap: 8px;
+  }
+  .ohf-controls {
+    gap: 8px;
+  }
+  .ohf-composer {
+    border-radius: 20px;
   }
   /* Where only one of the two can fit, the labels stay: three drawn frames
      read alike at a glance, three words do not. */
@@ -3635,20 +3680,9 @@ a.ohf-btn-solid {
   .ohf-tab[data-view="favorites"] {
     padding: 0 10px;
   }
-  /* Phone composer: the rail keeps every control and wraps, and the primary
-     action takes the full width of its own line rather than shrinking to a
-     44px mark the thumb has to aim at. */
-  .ohf-strip {
-    padding: 12px 10px 0;
-  }
-  .ohf-composer-head {
-    padding: 10px 10px 2px;
-  }
-  .ohf-composer-row {
-    padding: 2px 10px 10px;
-  }
-  .ohf-composer {
-    border-radius: 20px;
+  .ohf-bar {
+    height: 42px;
+    border-radius: 14px;
   }
   /* Thumb targets, not cursor targets. */
   .ohf-ctl,

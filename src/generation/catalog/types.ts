@@ -6,6 +6,8 @@ export type MediaItem = {
   id: string;
   url: string;
   role: MediaRole;
+  /** A still grabbed from a video file at upload, so the strip is not a blank tile. */
+  poster?: string;
 };
 
 export type SettingField =

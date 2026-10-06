@@ -16,6 +16,7 @@ import {
   UploadIcon,
 } from "./icons";
 import type { UploadRecord } from "./uploads";
+import { VideoStill } from "./video-still";
 
 type Source = "uploads" | "generations";
 
@@ -35,6 +36,7 @@ interface Asset {
   /** The run's layered-gradient art, so a tile whose media is slow to arrive or
       has aged off the platform's CDN is still a picture rather than a hole. */
   art?: string;
+  poster?: string;
 }
 
 /** Everything a role can be filled from: files this browser sent to Blob, and
@@ -87,7 +89,7 @@ export function AssetPicker({
     () =>
       uploads
         .filter((record) => record.kind === kind)
-        .map((record) => ({ url: record.url, kind: record.kind, title: record.name })),
+        .map((record) => ({ url: record.url, kind: record.kind, title: record.name, poster: record.poster })),
     [uploads, kind],
   );
 
@@ -366,8 +368,6 @@ function emptyCopy(source: Source, kind: AssetKind): { title: string; hint: stri
   };
 }
 
-/* Video assets preview on hover, the same reflex the gallery teaches, so the
-   tile carries its own element and its own ref. */
 const AssetTile = memo(function AssetTile({
   asset,
   picked,
@@ -379,8 +379,6 @@ const AssetTile = memo(function AssetTile({
   blocked: boolean;
   onToggle: (url: string) => void;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
   return (
     <button
       type="button"
@@ -391,26 +389,16 @@ const AssetTile = memo(function AssetTile({
       aria-pressed={picked}
       aria-label={asset.title}
       onClick={() => onToggle(asset.url)}
-      onMouseEnter={() => void videoRef.current?.play().catch(() => {})}
-      onMouseLeave={() => {
-        const video = videoRef.current;
-        if (!video) return;
-        video.pause();
-        video.currentTime = 0;
-      }}
     >
       <span className="ohf-asset-art" style={asset.art ? { background: asset.art } : undefined} />
 
       {asset.kind === "video" ? (
-        <video
-          ref={videoRef}
-          className="ohf-asset-media"
-          src={asset.url}
-          muted
-          loop
-          playsInline
-          preload="metadata"
-        />
+        asset.poster ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img className="ohf-asset-media" src={asset.poster} alt="" />
+        ) : (
+          <VideoStill className="ohf-asset-media" src={asset.url} />
+        )
       ) : asset.kind === "audio" ? (
         <span className="ohf-asset-glyph">
           <AudioIcon size={20} />

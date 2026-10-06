@@ -43,6 +43,9 @@ export const metadata: Metadata = {
 /* The studio is the only surface, and it ships a single look, so the browser
    chrome is pinned to its ground rather than following a preference. */
 export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
   colorScheme: "dark",
   themeColor: STUDIO_BG,
 };

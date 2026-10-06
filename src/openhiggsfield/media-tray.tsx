@@ -9,8 +9,9 @@ import { useSettings } from "@/generation/stores/settings";
 import { uploadMedia } from "@/generation/upload";
 
 import { ROLE_ACCEPT, ROLE_LABELS, ROLE_TAGS, roleLimits, rolesOf } from "./data";
-import { AudioIcon, CloseIcon, VideoIcon } from "./icons";
-import { kindOfFile, loadUploads, mergeUploads, rememberUpload, saveUploads, type UploadRecord } from "./uploads";
+import { AudioIcon, CloseIcon } from "./icons";
+import { kindOfFile, captureVideoPoster, loadUploads, mergeUploads, rememberUpload, saveUploads, type UploadRecord } from "./uploads";
+import { VideoStill } from "./video-still";
 
 function useMedia(model: ModelEntry) {
   const imageMedia = useImageMedia();
@@ -88,7 +89,7 @@ export function useMediaTray(
     onError(null);
     setUploading(true);
     try {
-      const uploaded = await uploadMedia(file);
+      const [uploaded, poster] = await Promise.all([uploadMedia(file), captureVideoPoster(file)]);
       /* The file outlives this run: it joins the shelf the picker offers, so a
          reference used once can be reached again without a second upload. */
       setStaged(uploaded.url);
@@ -99,6 +100,7 @@ export function useMediaTray(
           kind: kindOfFile(file),
           name: file.name,
           createdAt: Date.now(),
+          poster,
         }),
       );
     } catch (caught) {
@@ -146,8 +148,9 @@ export function useMediaTray(
       if (keep.has(item.url)) held.add(item.url);
       else media.remove(item.id);
     }
+    const posterOf = new Map(uploads.filter((row) => row.poster).map((row) => [row.url, row.poster]));
     for (const url of urls) {
-      if (!held.has(url)) media.add({ id: crypto.randomUUID(), url, role });
+      if (!held.has(url)) media.add({ id: crypto.randomUUID(), url, role, poster: posterOf.get(url) });
     }
   }
 
@@ -167,17 +170,19 @@ export function MediaStrip({ model }: { model: ModelEntry }) {
       {items.map((item) => (
         <li key={item.id} className="ohf-strip-item">
           <span className="ohf-strip-tile">
-            {item.role === "audio" || item.role === "video" ? (
+            {item.role === "audio" ? (
               <span className="ohf-strip-glyph">
-                {item.role === "audio" ? <AudioIcon size={20} /> : <VideoIcon size={20} />}
+                <AudioIcon size={20} />
               </span>
+            ) : item.role === "video" && !item.poster ? (
+              <VideoStill className="ohf-strip-thumb" src={item.url} />
             ) : (
               /* Blob-hosted user upload; next/image would proxy an arbitrary
                  remote host for a 56px thumb. */
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 className="ohf-strip-thumb"
-                src={item.url}
+                src={item.poster || item.url}
                 alt=""
                 onError={(event) => {
                   event.currentTarget.style.visibility = "hidden";

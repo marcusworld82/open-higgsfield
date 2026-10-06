@@ -12,6 +12,8 @@ export interface UploadRecord {
       alt text, the only handle a plain grey PNG has. */
   name: string;
   createdAt: number;
+  /** JPEG of one frame. A phone will not paint a video tile without it. */
+  poster?: string;
 }
 
 export const UPLOADS_KEY = "uploads.v1";
@@ -107,6 +109,61 @@ export function kindOfFile(file: File): AssetKind {
   return "image";
 }
 
+/** One frame from the local file, before it is uploaded. Canvas only sees the
+    blob URL this page made, so a remote host's CORS rules never get a vote. */
+export function captureVideoPoster(file: File): Promise<string | undefined> {
+  if (!file.type.startsWith("video/") || typeof document === "undefined") return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    let settled = false;
+    const done = (poster?: string) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      video.removeAttribute("src");
+      video.load();
+      resolve(poster);
+    };
+    const timer = window.setTimeout(() => done(), 4000);
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    video.src = url;
+    video.onerror = () => {
+      window.clearTimeout(timer);
+      done();
+    };
+    video.onloadeddata = () => {
+      const draw = () => {
+        window.clearTimeout(timer);
+        try {
+          const width = video.videoWidth || 320;
+          const height = video.videoHeight || 180;
+          const scale = Math.min(1, 480 / Math.max(width, height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(width * scale));
+          canvas.height = Math.max(1, Math.round(height * scale));
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return done();
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const poster = canvas.toDataURL("image/jpeg", 0.72);
+          done(poster.length > 180_000 ? undefined : poster);
+        } catch {
+          done();
+        }
+      };
+      video.onseeked = draw;
+      try {
+        const at = Number.isFinite(video.duration) ? Math.min(0.2, video.duration * 0.1) : 0.1;
+        video.currentTime = at > 0 ? at : 0.1;
+      } catch {
+        draw();
+      }
+    };
+  });
+}
+
 function coerceUpload(value: unknown): UploadRecord | null {
   if (value === null || typeof value !== "object") return null;
   const record = value as Partial<UploadRecord>;
@@ -122,5 +179,6 @@ function coerceUpload(value: unknown): UploadRecord | null {
     record.kind === "video" || record.kind === "audio" || record.kind === "image"
       ? record.kind
       : "image";
-  return { id: record.id, url: record.url, kind, name: record.name, createdAt: record.createdAt };
+  const poster = typeof record.poster === "string" && record.poster.startsWith("data:image/") ? record.poster : undefined;
+  return { id: record.id, url: record.url, kind, name: record.name, createdAt: record.createdAt, poster };
 }
