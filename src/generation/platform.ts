@@ -1,5 +1,6 @@
 import { clipVideo } from "./clip";
 import { toAuthorizationHeader } from "./credentials";
+import { assertFetchableUrl } from "./safe-url";
 
 const MODEL_ID = /^[a-z0-9][a-z0-9._/-]*$/i;
 
@@ -75,6 +76,7 @@ export function createPlatformClient(options: PlatformClientOptions) {
     if (!url.startsWith("http") || url.includes("higgsfield.ai")) return url;
     const cached = hosted.get(`${url}:${maxSeconds ?? ""}`);
     if (cached) return cached;
+    assertFetchableUrl(url);
     const source = await fetchImpl(url);
     if (!source.ok) throw new PlatformError(400, { detail: `Could not read an input file (${source.status})` });
     let type = mediaType(source.headers.get("content-type") ?? "", url);

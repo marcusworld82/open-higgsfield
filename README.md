@@ -79,9 +79,21 @@ Next.js 16 App Router on Vercel · React 19 · plain CSS · Zustand · pnpm
   generation platform, so old history can outlive its CDN lifetime and show gaps.
 - **Failed, NSFW and canceled runs** are recorded as failed tiles carrying the
   reason and a retry that restores the prompt and model.
-- **Your own platform key.** Entered in a modal, stored by a server action in an
-  httpOnly cookie. A missing key opens the modal — it never fails silently. The
-  topbar lamp states whether a key is held and whether a run is in flight.
+- **Your own platform key.** With Supabase configured you sign in first, and
+  keys are saved to your account, encrypted with AES-256-GCM on the server. The
+  browser only ever sees a masked hint (`abcd…:…wxyz`), with Check, Replace and
+  Delete. Without Supabase the keys sit in an httpOnly cookie, as before. A
+  missing key opens the keys panel; it never fails silently.
+- **Templates** are stored in Supabase per signed-in user (create, rename, edit
+  prompt, favorite, delete). Signed out, they stay in this browser's IndexedDB.
+  The first sign-in moves any browser-only templates into Supabase.
+
+### Phones
+
+- Below 640px every picker and settings popover opens as a bottom sheet with a
+  close button, scrolls on its own, and sits above the on-screen keyboard.
+- The prompt bar follows the visual viewport, so it stays usable while typing.
+- Touch targets are at least 44px and safe areas are respected.
 
 ---
 
@@ -117,8 +129,30 @@ Open the studio, press **Add key**, and paste your platform key as `id:secret`.
 ### Environment
 
 ```bash
-HF_API_BASE_URL=                      # generation API origin, server only
-OPEN_HIGGSFIELD_READ_WRITE_TOKEN=     # Vercel Blob read-write token
+HF_API_BASE_URL=                        # generation API origin, server only (default https://api.higgsfield.ai)
+OPEN_HIGGSFIELD_READ_WRITE_TOKEN=       # Vercel Blob read-write token, needed for uploads
+NEXT_PUBLIC_SUPABASE_URL=               # Supabase project URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=   # Supabase publishable (or legacy anon) key
+OHF_KEY_ENCRYPTION_SECRET=              # server only; generate with: openssl rand -base64 32
+```
+
+Leave the Supabase variables empty to run without sign-in (keys in a cookie,
+templates in the browser). `OHF_KEY_ENCRYPTION_SECRET` must be the same in every
+environment that reads the same database, or saved keys will not open. If it is
+lost, saved keys cannot be recovered and have to be entered again.
+
+### Supabase
+
+The SQL lives in `supabase/migrations/`. It creates `ohf_owners`,
+`ohf_api_keys` and `ohf_templates`, all with row level security: a row is only
+visible to the signed-in user who owns it, and only users listed in
+`ohf_owners` can read or write anything. Turn off public sign-ups in the
+Supabase dashboard (Authentication → Sign In / Providers). To let a user in,
+create them in Authentication → Users → Add user, then run:
+
+```sql
+insert into public.ohf_owners (user_id, email)
+select id, email from auth.users where email = 'you@example.com';
 ```
 
 ### Commands
@@ -128,6 +162,9 @@ OPEN_HIGGSFIELD_READ_WRITE_TOKEN=     # Vercel Blob read-write token
 | `pnpm dev` | Dev server on port 3000 |
 | `pnpm build` | Production build |
 | `pnpm start` | Serve the production build |
+| `pnpm lint` | ESLint (Next.js rules) |
+| `pnpm typecheck` | TypeScript, no output |
+| `pnpm test` | Unit tests (Vitest) |
 | `pnpm brand` | Rebuild the icons and OG card in `public/` |
 
 ---
@@ -137,7 +174,9 @@ OPEN_HIGGSFIELD_READ_WRITE_TOKEN=     # Vercel Blob read-write token
 ```
 src/
   app/          /  is the full-viewport studio and the only page
-                /api/blob issues upload tokens
+                /api/blob issues upload tokens (signed-in owner only)
+  auth/         sign-in and sign-out server actions
+  lib/supabase/ Supabase clients for the server and the proxy
                 base.css owns the document canvas
   generation/   generate requests, server actions, API mapping, catalog, stores
   openhiggsfield/

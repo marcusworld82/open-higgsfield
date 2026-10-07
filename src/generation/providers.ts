@@ -1,5 +1,6 @@
 import type { GenerationPlane } from "./catalog/types";
 import type { GenerationStatus } from "./platform";
+import { assertFetchableUrl } from "./safe-url";
 
 const OPENAI_SIZE: Record<string, string> = {
   "1:1": "1024x1024",
@@ -290,6 +291,7 @@ async function inlineImage(url: string): Promise<{ mime_type: string; data: stri
 }
 
 async function imageFile(url: string, index: number): Promise<File> {
+  assertFetchableUrl(url);
   const response = await fetch(url);
   if (!response.ok) throw new Error("Could not read a reference image");
   const length = Number(response.headers.get("content-length") ?? 0);

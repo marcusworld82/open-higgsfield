@@ -2,6 +2,7 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+import { readAuth } from "@/lib/supabase/server";
 import {
   DEVICE_COOKIE,
   DEVICE_COOKIE_OPTIONS,
@@ -9,10 +10,24 @@ import {
   resolveDeviceId,
 } from "@/generation/device";
 
-// Anyone who can hit this route can upload. Gate it when auth exists.
+/* Upload tokens are handed only to the signed-in owner when Supabase is set
+   up. Without Supabase the route stays open, as it always was. The
+   upload-completed callback comes from Vercel and is verified by handleUpload,
+   so it is not gated here. */
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const incoming = (await request.json()) as HandleUploadBody;
+  let incoming: HandleUploadBody;
+  try {
+    incoming = (await request.json()) as HandleUploadBody;
+  } catch {
+    return NextResponse.json({ error: "Invalid upload request" }, { status: 400 });
+  }
+  if (incoming.type === "blob.generate-client-token") {
+    const auth = await readAuth();
+    if (auth.configured && !(auth.user && auth.owner)) {
+      return NextResponse.json({ error: "Sign in to upload files" }, { status: 401 });
+    }
+  }
   const device =
     incoming.type === "blob.generate-client-token" ? await readDeviceId() : null;
   const body = device ? withDevicePath(incoming, device.deviceId) : incoming;
@@ -20,7 +35,13 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const token = process.env.OPEN_HIGGSFIELD_READ_WRITE_TOKEN;
-    if (!token) throw new Error("Missing OPEN_HIGGSFIELD_READ_WRITE_TOKEN");
+    if (!token) {
+      console.error("[blob] OPEN_HIGGSFIELD_READ_WRITE_TOKEN is not set");
+      return NextResponse.json(
+        { error: "Uploads are not set up on this server (OPEN_HIGGSFIELD_READ_WRITE_TOKEN is missing)" },
+        { status: 503 },
+      );
+    }
     const json = await handleUpload({
       body,
       request,
@@ -52,8 +73,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   } catch (error) {
     console.error("[blob] upload failed", error instanceof Error ? error.message : error);
-    if (device?.minted) return withDeviceCookie(new NextResponse(null, { status: 500 }), device);
-    throw error;
+    return withDeviceCookie(NextResponse.json({ error: "Upload failed. Try again." }, { status: 500 }), device);
   }
 }
 

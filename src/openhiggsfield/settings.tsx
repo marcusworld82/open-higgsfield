@@ -9,7 +9,7 @@ import {
   settingPillLabel,
   settingValueLabel,
 } from "./data";
-import { AudioIcon, ClockIcon, FormatIcon, GemIcon } from "./icons";
+import { AudioIcon, ClockIcon, CloseIcon, FormatIcon, GemIcon } from "./icons";
 import { Field, OptionList, Slider } from "./ui";
 
 /* One drawn mark per setting the catalog is known to declare. Anything new
@@ -103,14 +103,29 @@ export function SettingPill({
 
 /** The values behind one pill — a list of the enum's values, or the slider of
     a range, scoped to the single setting the visitor reached for. */
+/** Title and close button for a panel shown as a bottom sheet on a phone.
+    Hidden on wider screens, where the panel opens beside its control. */
+export function SheetBar({ title, onClose }: { title: string; onClose: () => void }) {
+  return (
+    <div className="ohf-sheet-bar">
+      <span className="ohf-sheet-title">{title}</span>
+      <button type="button" className="ohf-icon-btn ohf-sheet-close" aria-label="Close" onClick={onClose}>
+        <CloseIcon size={14} />
+      </button>
+    </div>
+  );
+}
+
 export function SettingPopover({
   model,
   settingKey,
   values,
+  onClose,
 }: {
   model: ModelEntry;
   settingKey: string;
   values: Record<string, unknown>;
+  onClose: () => void;
 }) {
   const settings = useSettings();
   const field = model.settings[settingKey];
@@ -126,6 +141,7 @@ export function SettingPopover({
         role="dialog"
         aria-label={label}
       >
+        <SheetBar title={label} onClose={onClose} />
         <Field label={label}>
           <OptionList
             options={field.values.map((option) => ({
@@ -134,7 +150,11 @@ export function SettingPopover({
             }))}
             value={value}
             ratio={settingKey === "aspectRatio"}
-            onChange={(next) => settings.set(model.id, { [settingKey]: next })}
+            onChange={(next) => {
+              /* One value per setting, so picking it is the whole job. */
+              settings.set(model.id, { [settingKey]: next });
+              onClose();
+            }}
           />
         </Field>
       </div>
@@ -144,6 +164,7 @@ export function SettingPopover({
   const value = typeof values[settingKey] === "number" ? (values[settingKey] as number) : field.default;
   return (
     <div className="ohf-popover ohf-popover--setting ohf-scroll" role="dialog" aria-label={label}>
+      <SheetBar title={label} onClose={onClose} />
       <Field label={label} value={settingValueLabel(settingKey, value)}>
         <Slider
           min={field.min}

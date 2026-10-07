@@ -265,7 +265,7 @@ const Tile = memo(function Tile({
           made them, so the prompt leads; the model joins the stored one-liner's
           facts below, on the plate the rest of the card's chrome uses. */}
       <span className="ohf-tile-caption">
-        <span className="ohf-tile-prompt">{item.prompt}</span>
+        <span className="ohf-tile-prompt">{item.name ?? item.prompt}</span>
         <span className="ohf-tile-facts">
           <span className="ohf-tile-fact ohf-tile-fact--model">
             <ModelIcon modelId={item.modelId} size={12} />
