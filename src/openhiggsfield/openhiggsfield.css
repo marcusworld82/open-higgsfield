@@ -3809,6 +3809,37 @@ a.ohf-btn-solid {
   height: 46px;
   font-size: 15px;
 }
+.ohf-signin-alt {
+  align-self: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: var(--tx2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line);
+}
+.ohf-signin-alt:hover {
+  color: var(--tx);
+}
+a.ohf-signin-link-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+.ohf-keys-account-acts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+a.ohf-btn-quiet {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
 .ohf-signin-note {
   margin: 0;
   font-size: 12.5px;
