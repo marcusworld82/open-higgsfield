@@ -1,5 +1,9 @@
 "use server";
 
+import { createClient } from "@supabase/supabase-js";
+import { headers } from "next/headers";
+
+import { supabaseEnv } from "@/lib/supabase/config";
 import { createSupabaseServer, readAuth } from "@/lib/supabase/server";
 
 export type SessionState =
@@ -42,4 +46,50 @@ export async function signIn(data: unknown): Promise<SignInResult> {
 export async function signOut(): Promise<void> {
   const supabase = await createSupabaseServer();
   await supabase?.auth.signOut();
+}
+
+export type ResetRequestResult = { ok: true } | { ok: false; error: string };
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Emails a link that opens /reset-password on this site, where the person
+    picks a new password. The same link sets a first password for an account
+    that was created without one. Supabase answers the same way whether or not
+    the email has an account, so this never tells a stranger who is signed up. */
+export async function requestPasswordReset(data: unknown): Promise<ResetRequestResult> {
+  const record = data !== null && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const email = typeof record.email === "string" ? record.email.trim().toLowerCase() : "";
+  if (!EMAIL.test(email)) return { ok: false, error: "Enter the email you sign in with." };
+
+  const env = supabaseEnv();
+  if (!env) return { ok: false, error: "Sign-in is not set up on this server." };
+
+  // No PKCE here: the link must work on any device, not only the browser that
+  // asked for it, so Supabase returns the session in the link itself.
+  const supabase = createClient(env.url, env.key, {
+    auth: { flowType: "implicit", persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${await siteOrigin()}/reset-password`,
+  });
+  if (error) {
+    if (error.status === 429 || /rate limit|too many/i.test(error.message)) {
+      return { ok: false, error: "Too many emails were sent in the last hour. Try again later." };
+    }
+    console.error("[auth] password reset email failed:", error.status, error.message);
+    return { ok: false, error: "The email could not be sent. Try again later." };
+  }
+  return { ok: true };
+}
+
+/** The address this request came in on. OHF_SITE_URL wins when it is set.
+    Supabase only follows links to addresses on its redirect allowlist, so a
+    forged Host header cannot send the link somewhere else. */
+async function siteOrigin(): Promise<string> {
+  const fixed = process.env.OHF_SITE_URL?.trim().replace(/\/$/, "");
+  if (fixed) return fixed;
+  const list = await headers();
+  const host = list.get("x-forwarded-host") ?? list.get("host") ?? "localhost:3000";
+  const proto = list.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
 }

@@ -155,6 +155,15 @@ insert into public.ohf_owners (user_id, email)
 select id, email from auth.users where email = 'you@example.com';
 ```
 
+New people set their own password: on the sign-in screen they tap **Forgot your
+password, or first time here?**, get an email, and pick a password on
+`/reset-password`. Signed-in people reach the same page from **Change password**
+in the keys panel. For the email link to come back to this site, add the site's
+address to Supabase → Authentication → URL Configuration → Redirect URLs (for
+example `https://your-site.vercel.app/**`). Without it Supabase sends people to
+the project's Site URL instead. `OHF_SITE_URL` can pin the address the link uses;
+otherwise it is the address the request came in on.
+
 ### Commands
 
 | Command | What it does |

@@ -247,11 +247,16 @@ export function KeyModal({
         {account && (
           <div className="ohf-keys-account">
             <span className="ohf-keys-account-email">Signed in as {account}</span>
-            {onSignOut && (
-              <button type="button" className="ohf-btn-quiet" onClick={onSignOut}>
-                Sign out
-              </button>
-            )}
+            <span className="ohf-keys-account-acts">
+              <a className="ohf-btn-quiet" href="/reset-password">
+                Change password
+              </a>
+              {onSignOut && (
+                <button type="button" className="ohf-btn-quiet" onClick={onSignOut}>
+                  Sign out
+                </button>
+              )}
+            </span>
           </div>
         )}
       </div>
