@@ -13,6 +13,7 @@ import {
   DownloadIcon,
   HeartIcon,
   OpenOutIcon,
+  PencilIcon,
   RetryIcon,
   TemplateIcon,
   TrashIcon,
@@ -45,6 +46,7 @@ export function Viewer({
   onClose,
   onReuse,
   onSaveTemplate,
+  onEditTemplate,
   onFavorite,
   onDelete,
   onPrev,
@@ -54,6 +56,8 @@ export function Viewer({
   onClose: () => void;
   onReuse: () => void;
   onSaveTemplate?: () => void;
+  /* Present only for a template: its name and prompt can be changed in place. */
+  onEditTemplate?: (patch: { name: string; prompt: string }) => Promise<boolean>;
   onFavorite: () => void;
   onDelete: () => void;
   /* Absent at the ends of the scope, which is how the walk stops. */
@@ -64,6 +68,10 @@ export function Viewer({
   const panelRef = useRef<HTMLDivElement>(null);
   const [closing, setClosing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [draft, setDraft] = useState({ name: "", prompt: "" });
   /* What the exit was for. Captured at the click so a re-render mid-flight
      cannot swap the action out from under it. */
   const after = useRef(onClose);
@@ -258,18 +266,88 @@ export function Viewer({
           <div className="ohf-viewer-side-body">
             <section className="ohf-viewer-block">
               <div className="ohf-viewer-block-head">
-                <h3 className="ohf-viewer-label">Prompt</h3>
-                <button
-                  type="button"
-                  className="ohf-viewer-copy"
-                  data-done={copied || undefined}
-                  onClick={copyPrompt}
-                >
-                  {copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
-                  {copied ? "Copied" : "Copy"}
-                </button>
+                <h3 className="ohf-viewer-label">{onEditTemplate ? "Template" : "Prompt"}</h3>
+                <div className="ohf-viewer-block-acts">
+                  {onEditTemplate && !editing && (
+                    <button
+                      type="button"
+                      className="ohf-viewer-copy"
+                      onClick={() => {
+                        setDraft({ name: item.name ?? "", prompt: item.prompt });
+                        setEditError(null);
+                        setEditing(true);
+                      }}
+                    >
+                      <PencilIcon size={12} />
+                      Edit
+                    </button>
+                  )}
+                  {!editing && (
+                    <button
+                      type="button"
+                      className="ohf-viewer-copy"
+                      data-done={copied || undefined}
+                      onClick={copyPrompt}
+                    >
+                      {copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  )}
+                </div>
               </div>
-              <p className="ohf-viewer-prompt">{item.prompt}</p>
+              {editing && onEditTemplate ? (
+                <form
+                  className="ohf-viewer-edit"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    setEditBusy(true);
+                    setEditError(null);
+                    void onEditTemplate(draft).then((ok) => {
+                      setEditBusy(false);
+                      if (ok) setEditing(false);
+                      else setEditError("Could not save. Try again.");
+                    });
+                  }}
+                >
+                  <label className="ohf-field">
+                    <span className="ohf-field-label">Name</span>
+                    <input
+                      className="ohf-input"
+                      value={draft.name}
+                      maxLength={120}
+                      placeholder="Untitled template"
+                      onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
+                    />
+                  </label>
+                  <label className="ohf-field">
+                    <span className="ohf-field-label">Prompt</span>
+                    <textarea
+                      className="ohf-input ohf-viewer-edit-prompt"
+                      value={draft.prompt}
+                      rows={6}
+                      onChange={(event) => setDraft((prev) => ({ ...prev, prompt: event.target.value }))}
+                    />
+                  </label>
+                  {editError && (
+                    <div className="ohf-alert" role="alert">
+                      <span className="ohf-alert-text">{editError}</span>
+                    </div>
+                  )}
+                  <div className="ohf-viewer-edit-acts">
+                    <button type="button" className="ohf-btn-quiet" onClick={() => setEditing(false)}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="ohf-keys-save" disabled={editBusy}>
+                      {editBusy ? "Saving…" : "Save changes"}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  {item.name && <p className="ohf-viewer-name">{item.name}</p>}
+                  <p className="ohf-viewer-prompt">{item.prompt}</p>
+                </>
+              )}
             </section>
 
             <section className="ohf-viewer-block">

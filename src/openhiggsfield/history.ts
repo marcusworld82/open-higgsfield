@@ -5,6 +5,8 @@ export type RunStatus = "running" | "completed" | "failed";
 
 export interface RunRecord {
   id: string;
+  /** A template's own title. Runs are named by their prompt instead. */
+  name?: string;
   surface: Surface;
   modelId: string;
   modelLabel: string;

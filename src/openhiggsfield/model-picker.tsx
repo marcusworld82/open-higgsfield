@@ -26,8 +26,10 @@ export function ModelPicker({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
+  /* Search takes focus with a mouse. On a touch screen it waits for a tap,
+     so the keyboard does not cover the list the moment the sheet opens. */
   useEffect(() => {
-    inputRef.current?.focus();
+    if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) inputRef.current?.focus();
   }, []);
 
   const query = search.trim().toLowerCase();
@@ -55,6 +57,8 @@ export function ModelPicker({
         </span>
         <input
           ref={inputRef}
+          type="search"
+          enterKeyHint="search"
           className="ohf-picker-input"
           value={search}
           placeholder="Search models"

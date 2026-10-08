@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { hasPlatformCredentials, submitGeneration, type KeyPresence } from "@/generation/actions";
+import { getSessionState, signOut, type SessionState } from "@/auth/actions";
+import { listProviderKeys, submitGeneration } from "@/generation/actions";
 import { MissingCredentialsError, PROVIDER_LABELS, providerOfModel, type ProviderId } from "@/generation/credentials";
+import type { KeySummaries } from "@/generation/key-store";
+import { AuthRequired, unwrap } from "@/generation/result";
 import { MODELS, getModel } from "@/generation/catalog";
 import type { GenerationPlane, Surface } from "@/generation/catalog";
 import { assemblePlane } from "@/generation/plane";
@@ -28,7 +31,9 @@ import {
 } from "./data";
 import { Gallery } from "./gallery";
 import { loadHistory, mergeHistory, replaceRequest, saveHistory, stepRun, type RunRecord } from "./history";
-import { loadTemplates, saveTemplates, templateFrom } from "./templates";
+import { SignIn } from "./sign-in";
+import { useTemplates } from "./use-templates";
+import { useVisualViewport } from "./use-visual-viewport";
 import { CloseIcon, UndoIcon } from "./icons";
 import { SelectionBar, type SaveProgress } from "./selection-bar";
 import { Topbar } from "./topbar";
@@ -163,11 +168,14 @@ function bannerFor(record: { error?: string; modelId?: string } | undefined): st
   return `Run not delivered — ${reason}.`;
 }
 
+const NO_KEYS: KeySummaries = { higgsfield: null, openai: null, google: null, kie: null };
+
 function describeError(caught: unknown): string {
   const message = caught instanceof Error ? caught.message : String(caught);
   if (caught instanceof MissingCredentialsError) {
     return `Add your ${PROVIDER_LABELS[caught.provider]} key to generate.`;
   }
+  if (caught instanceof AuthRequired) return "You were signed out. Sign in again to keep generating.";
   return `Generation failed — ${message}. Try again; if it repeats, check the key.`;
 }
 
@@ -187,6 +195,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
   const setModel = useActive((state) => state.setModel);
   const model = getModel(modelId);
   const setSettings = useSettings((state) => state.set);
+  useVisualViewport();
 
   const [history, setHistory] = useState<RunRecord[]>([]);
   const [runs, setRuns] = useState<ActiveRun[]>([]);
@@ -203,17 +212,26 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
      recent sheets on top, and a range extends from the last one touched. */
   const [selected, setSelected] = useState<string[]>([]);
   const [saving, setSaving] = useState<SaveProgress | null>(null);
-  const [templates, setTemplates] = useState<RunRecord[]>([]);
-  const [templatesLoaded, setTemplatesLoaded] = useState(false);
-  const [keys, setKeys] = useState<KeyPresence>({
-    higgsfield: false,
-    openai: false,
-    google: false,
-    kie: false,
-  });
+  /* null until the server says whether sign-in is set up and who is signed in. */
+  const [session, setSession] = useState<SessionState | null>(null);
+  const signedIn = session?.configured === true && session.email !== null && session.owner;
+  const needsSignIn = session?.configured === true && !signedIn;
+  const remoteTemplates = session === null ? null : session.configured ? (signedIn ? true : null) : false;
+  const [summaries, setSummaries] = useState<KeySummaries>(NO_KEYS);
+  const keys = useMemo(
+    () => ({
+      higgsfield: Boolean(summaries.higgsfield),
+      openai: Boolean(summaries.openai),
+      google: Boolean(summaries.google),
+      kie: Boolean(summaries.kie),
+    }),
+    [summaries],
+  );
   const [keyProvider, setKeyProvider] = useState<ProviderId>("higgsfield");
   const [keysOpen, setKeysOpen] = useState(false);
   const keyConfigured = keys.higgsfield || keys.openai || keys.google || keys.kie;
+  const templateStore = useTemplates(remoteTemplates, setError);
+  const templates = templateStore.templates;
 
   const galleryRef = useRef<HTMLDivElement>(null);
   const rangeAnchor = useRef<number | null>(null);
@@ -255,26 +273,44 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
 
   useEffect(() => {
     let live = true;
-    void loadTemplates()
-      .then((rows) => {
-        if (live) setTemplates(rows);
+    void getSessionState()
+      .then((next) => {
+        if (live) setSession(next);
       })
-      .finally(() => {
-        if (live) setTemplatesLoaded(true);
+      .catch(() => {
+        if (live) setSession({ configured: false });
       });
     return () => {
       live = false;
     };
   }, []);
-  useEffect(() => {
-    if (templatesLoaded) void saveTemplates(templates);
-  }, [templatesLoaded, templates]);
 
+  /* Keys are read once the session is known: from the account when signed
+     in, from the cookie when sign-in is not set up. No key at all opens the
+     panel, so a first visit never fails silently. */
   useEffect(() => {
-    void hasPlatformCredentials().then((ready) => {
-      setKeys(ready);
-      if (!ready.higgsfield && !ready.openai && !ready.google && !ready.kie) setKeysOpen(true);
+    if (session === null || needsSignIn) return;
+    let live = true;
+    void listProviderKeys().then((result) => {
+      if (!live) return;
+      if (!result.ok) {
+        if (result.code === "auth") setSession((prev) => (prev?.configured ? { ...prev, email: null } : prev));
+        else setError(`Saved keys did not load — ${result.error}`);
+        return;
+      }
+      setSummaries(result.value);
+      if (!Object.values(result.value).some(Boolean)) setKeysOpen(true);
     });
+    return () => {
+      live = false;
+    };
+  }, [session, needsSignIn]);
+
+  const onSignOut = useCallback(async () => {
+    await signOut();
+    setKeysOpen(false);
+    setSummaries(NO_KEYS);
+    setSession((prev) => (prev?.configured ? { ...prev, email: null, owner: false } : prev));
   }, []);
 
   useEffect(() => {
@@ -321,7 +357,8 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
       } catch (caught) {
         if (!alive.current) return;
         const message = describeError(caught);
-        if (message.includes("platform key")) setKeysOpen(true);
+        if (caught instanceof MissingCredentialsError) setKeysOpen(true);
+        if (caught instanceof AuthRequired) setSession((prev) => (prev?.configured ? { ...prev, email: null } : prev));
         setHistory((prev) => {
           const next = replaceRequest(prev, requestId, failedRows(requestId, expected, draft, message));
           void saveHistory(next);
@@ -449,7 +486,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
 
     const runOne = async (slot: { skeletons: string[] }) => {
       try {
-        const queued = await submitGeneration(plane);
+        const queued = unwrap(await submitGeneration(plane));
         if (queued.done) {
           const records = terminalRows(queued.requestId, draft, queued.done);
           setHistory((prev) => {
@@ -473,10 +510,11 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
       } catch (caught) {
         if (!alive.current) return;
         const message = describeError(caught);
-        if (message.includes("key")) {
-          setKeyProvider(needed);
+        if (caught instanceof MissingCredentialsError) {
+          setKeyProvider(caught.provider);
           setKeysOpen(true);
         }
+        if (caught instanceof AuthRequired) setSession((prev) => (prev?.configured ? { ...prev, email: null } : prev));
         setError((prev) => prev ?? message);
       } finally {
         if (alive.current) {
@@ -515,13 +553,10 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
     [setModel, setSettings],
   );
 
+  const { add: addTemplate, update: updateTemplate, remove: removeTemplate } = templateStore;
   const toggleFavorite = useCallback((record: RunRecord) => {
     if (record.id.startsWith("template-")) {
-      setTemplates((prev) =>
-        prev.map((entry) =>
-          entry.id === record.id ? { ...entry, favorite: !entry.favorite } : entry,
-        ),
-      );
+      void updateTemplate(record.id, { favorite: !record.favorite });
       return;
     }
     setHistory((prev) =>
@@ -529,7 +564,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
         entry.id === record.id ? { ...entry, favorite: !entry.favorite } : entry,
       ),
     );
-  }, []);
+  }, [updateTemplate]);
 
   const deleteRuns = useCallback((records: RunRecord[]) => {
     if (records.length === 0) return;
@@ -540,18 +575,18 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
 
   const deleteRun = useCallback((record: RunRecord) => {
     if (record.id.startsWith("template-")) {
-      setTemplates((prev) => prev.filter((entry) => entry.id !== record.id));
+      void removeTemplate(record.id);
       return;
     }
     deleteRuns([record]);
-  }, [deleteRuns]);
+  }, [deleteRuns, removeTemplate]);
 
   const saveAsTemplate = useCallback((record: RunRecord) => {
     if (record.status !== "completed" || record.urls.length === 0) return;
-    setTemplates((prev) => [templateFrom(record), ...prev]);
+    void addTemplate(record);
     setView("templates");
     setViewerId(null);
-  }, []);
+  }, [addTemplate]);
 
   /* History is newest-first by construction, so the restored runs drop back
      into their own places rather than onto the top of the grid. */
@@ -738,6 +773,14 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
   );
   const busy = runs.length > 0 || history.some((record) => record.status === "running");
 
+  if (needsSignIn) {
+    return (
+      <div className={`ohf ${fontClassName}`} style={{ "--ohf-grain": GRAIN_URI } as React.CSSProperties}>
+        <SignIn onSignedIn={(next) => setSession(next)} />
+      </div>
+    );
+  }
+
   return (
     <div className={`ohf ${fontClassName}`} style={{ "--ohf-grain": GRAIN_URI } as React.CSSProperties}>
       <div className="ohf-shell">
@@ -810,6 +853,11 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
             onSaveTemplate={
               viewerItem.id.startsWith("template-") ? undefined : () => saveAsTemplate(viewerItem)
             }
+            onEditTemplate={
+              viewerItem.id.startsWith("template-")
+                ? (patch) => updateTemplate(viewerItem.id, patch)
+                : undefined
+            }
             onFavorite={() => toggleFavorite(viewerItem)}
             /* The viewer is released along with the run, so undoing the
                delete restores it to the grid and not back over the studio. */
@@ -821,13 +869,15 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
         )}
         {keysOpen && (
           <KeyModal
-            presence={keys}
+            summaries={summaries}
             initialProvider={keyProvider}
+            account={signedIn && session?.configured ? session.email : null}
             onClose={() => setKeysOpen(false)}
             onChange={(next) => {
-              setKeys(next);
+              setSummaries(next);
               setError(null);
             }}
+            onSignOut={signedIn ? () => void onSignOut() : undefined}
           />
         )}
       </div>

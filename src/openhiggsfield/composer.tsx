@@ -261,7 +261,26 @@ export function Composer({
           </div>
         )}
 
-        {settingKey && <SettingPopover model={model} settingKey={settingKey} values={values} />}
+        {/* On a phone every panel is a bottom sheet over a scrim; tapping the
+            scrim puts it away. Hidden on wider screens, where a click outside
+            the composer already does that. */}
+        {overlay && (
+          <button
+            type="button"
+            className="ohf-scrim"
+            aria-label="Close panel"
+            tabIndex={-1}
+            onClick={() => setOverlay(null)}
+          />
+        )}
+        {settingKey && (
+          <SettingPopover
+            model={model}
+            settingKey={settingKey}
+            values={values}
+            onClose={() => setOverlay(null)}
+          />
+        )}
         {overlay === ASSETS && (
           <AssetPicker
             model={model}

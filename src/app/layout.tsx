@@ -46,6 +46,9 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  /* Android Chrome shrinks the page when the keyboard opens, so the composer
+     stays above it. iOS ignores this; useVisualViewport covers iOS. */
+  interactiveWidget: "resizes-content",
   colorScheme: "dark",
   themeColor: STUDIO_BG,
 };

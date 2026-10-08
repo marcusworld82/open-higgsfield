@@ -316,3 +316,21 @@ export function WaveBadgeIcon({ size = 12 }: IconProps) {
     </svg>
   );
 }
+
+export function PencilIcon({ size = 13 }: IconProps) {
+  return (
+    <svg {...base(size)}>
+      <path d="M10.6 2.4a1.6 1.6 0 0 1 2.3 0l.7.7a1.6 1.6 0 0 1 0 2.3L6 13l-3.5.9.9-3.5z" />
+      <path d="m9.5 3.5 3 3" />
+    </svg>
+  );
+}
+
+export function UserIcon({ size = 15 }: IconProps) {
+  return (
+    <svg {...base(size)}>
+      <circle cx="8" cy="5.5" r="2.75" />
+      <path d="M2.75 14c.6-2.6 2.7-4.25 5.25-4.25S12.65 11.4 13.25 14" />
+    </svg>
+  );
+}

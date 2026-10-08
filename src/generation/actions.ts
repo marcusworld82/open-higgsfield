@@ -1,31 +1,33 @@
 "use server";
 
-export const maxDuration = 60;
-
-import { cookies } from "next/headers";
-
 import { getModel, parseSettings } from "./catalog";
 import type { GenerationPlane } from "./catalog/types";
 import {
   MissingCredentialsError,
-  PLATFORM_KEY_COOKIE,
-  PLATFORM_KEY_COOKIE_OPTIONS,
   PROVIDERS,
-  type KeyMap,
+  PROVIDER_LABELS,
   type ProviderId,
-  decodeCredentials,
-  encodeCredentials,
   parseCredentialInput,
   providerOfModel,
 } from "./credentials";
+import { toFailure } from "./failure";
+import { checkKey, type KeyCheck } from "./key-check";
+import { deleteKey, listKeySummaries, readKey, readKeys, saveKey, type KeySummaries, type KeySummary } from "./key-store";
 import { createPlatformClient } from "./platform";
 import type { GenerationStatus, StatusResult } from "./platform";
 import { firstGenjutsuPreset, generateNanoBanana, generateOpenAIImage, kieStatus, submitKie } from "./providers";
+import type { ActionResult } from "./result";
 import { toPlatform } from "./to-platform";
+
+/* Server actions run inside the page route; its maxDuration is set in
+   src/app/page.tsx because a "use server" file may only export async
+   functions. */
 
 const DEFAULT_HF_BASE = "https://api.higgsfield.ai";
 
-export type KeyPresence = Record<ProviderId, boolean>;
+function hfBase(): string {
+  return process.env.HF_API_BASE_URL?.trim().replace(/\/$/, "") || DEFAULT_HF_BASE;
+}
 
 export type SubmitResult = {
   requestId: string;
@@ -33,127 +35,144 @@ export type SubmitResult = {
   done?: GenerationStatus;
 };
 
-export async function savePlatformCredentials(data: unknown) {
-  const { provider, apiKey } = parseCredentialInput(data);
-  const current = (await readStoredCredentials()) ?? {};
-  const jar = await cookies();
-  jar.set(
-    PLATFORM_KEY_COOKIE,
-    encodeCredentials({ ...current, [provider]: apiKey }),
-    PLATFORM_KEY_COOKIE_OPTIONS,
-  );
-}
+/* ---------- keys ---------- */
 
-export async function clearPlatformCredentials(data?: unknown) {
-  const provider = providerFrom(data);
-  const current = (await readStoredCredentials()) ?? {};
-  delete current[provider];
-  const jar = await cookies();
-  if (Object.keys(current).length === 0) {
-    jar.set(PLATFORM_KEY_COOKIE, "", { ...PLATFORM_KEY_COOKIE_OPTIONS, maxAge: 0 });
-    return;
+export async function listProviderKeys(): Promise<ActionResult<KeySummaries>> {
+  try {
+    return { ok: true, value: await listKeySummaries() };
+  } catch (caught) {
+    return toFailure(caught, "keys");
   }
-  jar.set(PLATFORM_KEY_COOKIE, encodeCredentials(current), PLATFORM_KEY_COOKIE_OPTIONS);
 }
 
-export async function hasPlatformCredentials(): Promise<KeyPresence> {
-  const stored = await readStoredCredentials();
-  return {
-    higgsfield: Boolean(stored?.higgsfield),
-    openai: Boolean(stored?.openai),
-    google: Boolean(stored?.google),
-    kie: Boolean(stored?.kie),
-  };
+export async function saveProviderKey(data: unknown): Promise<ActionResult<KeySummary>> {
+  try {
+    const { provider, apiKey } = parseCredentialInput(data);
+    return { ok: true, value: await saveKey(provider, apiKey) };
+  } catch (caught) {
+    return toFailure(caught, "keys");
+  }
 }
 
-export async function submitGeneration(plane: GenerationPlane): Promise<SubmitResult> {
+export async function deleteProviderKey(data: unknown): Promise<ActionResult<null>> {
+  try {
+    await deleteKey(providerFrom(data));
+    return { ok: true, value: null };
+  } catch (caught) {
+    return toFailure(caught, "keys");
+  }
+}
+
+/** Tests the saved key for one provider with a free read-only request. */
+export async function checkProviderKey(data: unknown): Promise<ActionResult<KeyCheck>> {
+  try {
+    const provider = providerFrom(data);
+    const key = await readKey(provider);
+    return { ok: true, value: await checkKey(provider, key, hfBase()) };
+  } catch (caught) {
+    return toFailure(caught, "keys");
+  }
+}
+
+/* ---------- generation ---------- */
+
+export async function submitGeneration(plane: GenerationPlane): Promise<ActionResult<SubmitResult>> {
+  try {
+    return { ok: true, value: await submit(plane) };
+  } catch (caught) {
+    return toFailure(caught, "submit");
+  }
+}
+
+async function submit(plane: GenerationPlane): Promise<SubmitResult> {
   const model = getModel(plane.model);
   const parsed: GenerationPlane = {
     ...plane,
     settings: parseSettings(model, plane.settings),
   };
   const provider = providerOfModel(model.provider);
-  const stored = (await readStoredCredentials()) ?? {};
+  const stored = await readKeys();
+
   if ((provider === "openai" || provider === "google") && stored.kie) {
     const taskId = await submitKie(stored.kie, parsed);
     return { requestId: `kie:${taskId}` };
   }
-  const keys = await readCredentials(provider);
+  const key = stored[provider];
+  if (!key) throw new MissingCredentialsError(provider);
 
   if (provider === "openai") {
-    const done = await generateOpenAIImage(keys.openai!, parsed);
+    const done = await generateOpenAIImage(key, parsed);
     const requestId = `openai-${crypto.randomUUID()}`;
     return { requestId, done: { ...done, requestId } };
   }
   if (provider === "google") {
-    const done = await generateNanoBanana(keys.google!, parsed);
+    const done = await generateNanoBanana(key, parsed);
     const requestId = `google-${crypto.randomUUID()}`;
     return { requestId, done: { ...done, requestId } };
   }
 
   if (parsed.model === "genjutsu" && parsed.settings.mode === "restyle") {
-    parsed.settings.presetId = await firstGenjutsuPreset(keys.baseUrl, keys.higgsfield!);
+    parsed.settings.presetId = await firstGenjutsuPreset(hfBase(), key);
   }
   const { path, body } = toPlatform(parsed);
-  const queued = await createPlatformClient({
-    apiKey: keys.higgsfield!,
-    baseUrl: keys.baseUrl,
-  }).submit(path, body);
+  const queued = await createPlatformClient({ apiKey: key, baseUrl: hfBase() }).submit(path, body);
   return { requestId: queued.requestId };
 }
 
-export async function getGenerationStatuses(data: unknown): Promise<StatusResult[]> {
-  const requestIds = parseRequestIds(data);
+export async function getGenerationStatuses(data: unknown): Promise<ActionResult<StatusResult[]>> {
+  try {
+    return { ok: true, value: await statuses(parseRequestIds(data)) };
+  } catch (caught) {
+    return toFailure(caught, "status");
+  }
+}
+
+async function statuses(requestIds: string[]): Promise<StatusResult[]> {
   const kieIds = requestIds.filter((requestId) => requestId.startsWith("kie:"));
   const platformIds = requestIds.filter((requestId) => !requestId.startsWith("kie:"));
   const results: StatusResult[] = [];
+  const keys = await readKeys();
+
+  const missing = (provider: ProviderId, ids: string[]) => {
+    const error = `Add your ${PROVIDER_LABELS[provider]} key to check this run`;
+    for (const requestId of ids) results.push({ requestId, error });
+  };
 
   if (kieIds.length > 0) {
-    const keys = await readCredentials("kie");
-    results.push(
-      ...(await Promise.all(
-        kieIds.map(async (requestId): Promise<StatusResult> => {
-          try {
-            return { requestId, status: await kieStatus(keys.kie!, requestId.slice(4)) };
-          } catch (caught) {
-            return { requestId, error: caught instanceof Error ? caught.message : String(caught) };
-          }
-        }),
-      )),
-    );
+    if (!keys.kie) missing("kie", kieIds);
+    else
+      results.push(
+        ...(await Promise.all(
+          kieIds.map(async (requestId): Promise<StatusResult> => {
+            try {
+              return { requestId, status: await kieStatus(keys.kie!, requestId.slice(4)) };
+            } catch (caught) {
+              return { requestId, error: caught instanceof Error ? caught.message : String(caught) };
+            }
+          }),
+        )),
+      );
   }
 
   if (platformIds.length > 0) {
-    const keys = await readCredentials("higgsfield");
-    const client = createPlatformClient({ apiKey: keys.higgsfield!, baseUrl: keys.baseUrl });
-    results.push(
-      ...(await Promise.all(
-        platformIds.map(async (requestId): Promise<StatusResult> => {
-          try {
-            return { requestId, status: await client.status(requestId) };
-          } catch (caught) {
-            return { requestId, error: caught instanceof Error ? caught.message : String(caught) };
-          }
-        }),
-      )),
-    );
+    if (!keys.higgsfield) missing("higgsfield", platformIds);
+    else {
+      const client = createPlatformClient({ apiKey: keys.higgsfield, baseUrl: hfBase() });
+      results.push(
+        ...(await Promise.all(
+          platformIds.map(async (requestId): Promise<StatusResult> => {
+            try {
+              return { requestId, status: await client.status(requestId) };
+            } catch (caught) {
+              return { requestId, error: caught instanceof Error ? caught.message : String(caught) };
+            }
+          }),
+        )),
+      );
+    }
   }
 
   return results;
-}
-
-async function readStoredCredentials(): Promise<KeyMap | null> {
-  const jar = await cookies();
-  return decodeCredentials(jar.get(PLATFORM_KEY_COOKIE)?.value);
-}
-
-async function readCredentials(provider: ProviderId): Promise<KeyMap & { baseUrl: string }> {
-  const stored = await readStoredCredentials();
-  if (!stored?.[provider]) throw new MissingCredentialsError(provider);
-  return {
-    ...stored,
-    baseUrl: process.env.HF_API_BASE_URL?.replace(/\/$/, "") || DEFAULT_HF_BASE,
-  };
 }
 
 function providerFrom(data: unknown): ProviderId {
@@ -165,12 +184,12 @@ function providerFrom(data: unknown): ProviderId {
       return provider as ProviderId;
     }
   }
-  return "higgsfield";
+  throw new Error("Pick a provider");
 }
 
 function parseRequestIds(data: unknown): string[] {
-  const payload = asObject(data, "Invalid status payload");
-  const requestIds = payload.requestIds;
+  if (data === null || typeof data !== "object" || Array.isArray(data)) throw new Error("Invalid status payload");
+  const requestIds = (data as Record<string, unknown>).requestIds;
   if (!Array.isArray(requestIds) || requestIds.length === 0) {
     throw new Error("Invalid request ids");
   }
@@ -178,9 +197,4 @@ function parseRequestIds(data: unknown): string[] {
     if (typeof requestId !== "string" || !requestId) throw new Error("Invalid request id");
     return requestId;
   });
-}
-
-function asObject(data: unknown, message: string): Record<string, unknown> {
-  if (data === null || typeof data !== "object" || Array.isArray(data)) throw new Error(message);
-  return data as Record<string, unknown>;
 }

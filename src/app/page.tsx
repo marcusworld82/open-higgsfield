@@ -13,6 +13,10 @@ const inter = Inter({
 
 /* Title, description and the Open Graph block all come from the root, which
    already describes this surface. Only the canonical link is route-specific. */
+/* Server actions run inside this route, so their time limit is set here. A
+   "use server" file may only export async functions. */
+export const maxDuration = 60;
+
 export const metadata: Metadata = {
   alternates: { canonical: "/" },
 };

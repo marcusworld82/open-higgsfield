@@ -1,5 +1,6 @@
 import { getGenerationStatuses } from "./actions";
 import type { GenerationStatus, StatusResult } from "./platform";
+import { AuthRequired, unwrap } from "./result";
 
 /** Statuses the platform never moves off again. */
 const TERMINAL = new Set(["completed", "failed", "nsfw", "canceled"]);
@@ -71,11 +72,17 @@ async function round(): Promise<void> {
   timer = null;
   polling = true;
   try {
-    const results = await getGenerationStatuses({ requestIds: [...waiting.keys()] });
+    const results = unwrap(await getGenerationStatuses({ requestIds: [...waiting.keys()] }));
     misses = 0;
     for (const result of results) deliver(result);
     sweep();
   } catch (caught) {
+    /* Signed out mid-run: nothing will answer until sign-in, so the watches
+       end now with that reason instead of after three silent misses. */
+    if (caught instanceof AuthRequired) {
+      settleAll(caught);
+      return;
+    }
     if (++misses < MAX_MISSES) return;
     settleAll(caught instanceof Error ? caught : new Error(String(caught)));
   } finally {

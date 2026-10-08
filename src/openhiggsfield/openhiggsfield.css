@@ -340,14 +340,20 @@
 
 /* ---------- shell ---------- */
 
+/* Pinned to the visible part of the screen. When the iOS keyboard opens,
+   --ohf-vv-h shrinks and the composer rides up with it instead of hiding
+   behind the keys. Without the variables this is the full dynamic viewport. */
 .ohf-shell {
-  height: 100dvh;
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: var(--ohf-vv-top, 0px);
+  height: var(--ohf-vv-h, 100dvh);
   max-width: 100%;
   overflow: hidden;
-  overscroll-behavior-x: none;
+  overscroll-behavior: none;
   touch-action: pan-y;
   background: var(--bg);
-  position: relative;
 }
 
 /* ---------- top bar ---------- */
@@ -3776,5 +3782,475 @@ a.ohf-btn-solid {
   .ohf-skeleton::before,
   .ohf-generate-sheen {
     display: none;
+  }
+}
+
+
+/* ==========================================================================
+   Sign-in, saved keys, template editing
+   ========================================================================== */
+
+.ohf-signin {
+  min-height: var(--ohf-vv-h, 100dvh);
+  display: grid;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+.ohf-signin-panel {
+  width: min(400px, 100%);
+  gap: 14px;
+  padding: 24px 20px 20px;
+}
+.ohf-signin-head h1 {
+  margin: 0;
+}
+.ohf-signin-submit {
+  height: 46px;
+  font-size: 15px;
+}
+.ohf-signin-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--tx3);
+  text-align: center;
+}
+
+.ohf-keys-panel {
+  width: 460px;
+  max-height: calc(var(--ohf-vv-h, 100dvh) - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ohf-keys-list {
+  list-style: none;
+  margin: 0;
+  padding: 14px 18px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ohf-key-row {
+  border: 1px solid var(--line);
+  background: var(--s1);
+  border-radius: 12px;
+  padding: 10px 10px 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ohf-key-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 36px;
+}
+.ohf-key-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ohf-key-row-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.ohf-key-row-state {
+  font-size: 12px;
+  color: var(--tx3);
+}
+.ohf-key-hint {
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--tx2);
+  letter-spacing: 0.02em;
+}
+.ohf-key-row-acts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.ohf-key-row-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ohf-key-row-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--tx3);
+}
+.ohf-key-row-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--tx2);
+}
+.ohf-key-row-note[data-tone="ok"] {
+  color: var(--accent);
+}
+.ohf-key-row-note[data-tone="bad"] {
+  color: var(--danger);
+}
+.ohf-btn-danger {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-line);
+}
+.ohf-keys-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 18px 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--tx3);
+}
+.ohf-keys-account-email {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ohf-viewer-block-acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ohf-viewer-name {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.ohf-viewer-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ohf-viewer-edit-prompt {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.5;
+}
+.ohf-viewer-edit-acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Bottom-sheet chrome. Only shown at phone width (below). */
+.ohf-scrim,
+.ohf-sheet-bar {
+  display: none;
+}
+
+/* Hover-only tooltips stick after a tap on a touch screen and cover the
+   control that was just pressed. */
+@media (hover: none) {
+  .ohf-tip[data-tip]::after {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Phone layout. Tested at 390x844 and 430x932.
+   ========================================================================== */
+
+@media (max-width: 640px) {
+  /* ---- top bar: Image / Video lead, the other scopes are icons ---- */
+  .ohf-topbar {
+    padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 0
+      max(10px, env(safe-area-inset-left));
+    gap: 6px;
+    justify-content: stretch;
+  }
+  .ohf-topbar > .ohf-bar:first-of-type {
+    flex: 1;
+    min-width: 0;
+  }
+  .ohf-bar {
+    height: 52px;
+    padding: 0 4px;
+    border-radius: 16px;
+  }
+  .ohf-tabs {
+    flex: 1;
+    min-width: 0;
+    gap: 2px;
+  }
+  .ohf .ohf-tab {
+    height: 44px;
+    min-width: 44px;
+    padding: 0 10px;
+    justify-content: center;
+    border-radius: 12px;
+    font-size: 14px;
+  }
+  .ohf-tab[data-view="image"],
+  .ohf-tab[data-view="video"] {
+    flex: 1 1 0;
+  }
+  .ohf .ohf-tab svg {
+    display: none;
+  }
+  .ohf .ohf-tab:is([data-view="assets"], [data-view="favorites"], [data-view="templates"]) {
+    flex: 0 0 44px;
+    padding: 0;
+  }
+  .ohf .ohf-tab:is([data-view="assets"], [data-view="favorites"], [data-view="templates"]) svg {
+    display: block;
+    width: 18px;
+    height: 18px;
+  }
+  .ohf .ohf-tab:is([data-view="assets"], [data-view="favorites"], [data-view="templates"]) .ohf-tab-label {
+    display: none;
+  }
+  .ohf-thumb {
+    border-radius: 12px;
+  }
+  .ohf .ohf-key {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+    border-radius: 12px;
+  }
+  .ohf-key svg {
+    width: 18px;
+    height: 18px;
+  }
+  .ohf-key .ohf-lamp {
+    position: absolute;
+    top: 9px;
+    right: 9px;
+  }
+  .ohf-gallery {
+    padding-top: calc(max(8px, env(safe-area-inset-top)) + 64px);
+  }
+
+  /* ---- composer ---- */
+  .ohf-dock {
+    padding: 6px max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
+  }
+  :root[data-ohf-keyboard="open"] .ohf-dock {
+    padding-bottom: 6px;
+  }
+  .ohf-composer {
+    border-radius: 20px;
+  }
+  .ohf-composer-head {
+    padding: 10px 10px 2px;
+    gap: 8px;
+  }
+  /* 16px keeps iOS Safari from zooming the page when the field takes focus. */
+  .ohf-prompt,
+  .ohf-input,
+  .ohf-picker-input {
+    font-size: 16px;
+  }
+  .ohf-prompt {
+    min-height: 44px;
+    max-height: min(168px, 28vh);
+    padding-top: 10px;
+  }
+  .ohf .ohf-attach {
+    width: 44px;
+    height: 44px;
+    margin-top: 0;
+  }
+  /* One row of controls that scrolls sideways instead of stacking three rows
+     deep; the fade on the right edge says there is more. */
+  .ohf-composer-row {
+    padding: 4px 0 10px;
+    gap: 8px;
+  }
+  .ohf .ohf-controls {
+    flex: 1 1 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    padding: 0 10px;
+    scroll-padding-inline: 10px;
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .ohf-controls::-webkit-scrollbar {
+    display: none;
+  }
+  .ohf .ohf-ctl,
+  .ohf .ohf-batch {
+    height: 44px;
+    flex-shrink: 0;
+    font-size: 13.5px;
+  }
+  .ohf .ohf-batch-step {
+    width: 36px;
+    height: 36px;
+  }
+  .ohf .ohf-generate-slot {
+    width: auto;
+    flex: 1 1 100%;
+    margin: 0 10px;
+  }
+  .ohf .ohf-generate {
+    flex: 1;
+    height: 48px;
+    font-size: 15px;
+  }
+
+  /* ---- every composer panel becomes a bottom sheet ---- */
+  .ohf-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    background: rgba(4, 5, 5, 0.6);
+    animation: ohf-fade 0.18s ease;
+    cursor: default;
+  }
+  .ohf .ohf-popover {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: var(--ohf-kb, 0px);
+    width: 100%;
+    max-width: none;
+    max-height: calc(var(--ohf-vv-h, 100dvh) - max(56px, env(safe-area-inset-top) + 24px));
+    border-radius: 22px 22px 0 0;
+    border-bottom: none;
+    padding-bottom: env(safe-area-inset-bottom);
+    animation: ohf-sheet-up 0.26s var(--ease-slide);
+    transform-origin: bottom center;
+  }
+  :root[data-ohf-keyboard="open"] .ohf .ohf-popover {
+    padding-bottom: 0;
+  }
+  /* A grab handle, so it reads as a sheet. */
+  .ohf .ohf-popover::before {
+    content: "";
+    display: block;
+    flex-shrink: 0;
+    width: 40px;
+    height: 4px;
+    margin: 8px auto 2px;
+    border-radius: 2px;
+    background: var(--line-2);
+  }
+  .ohf .ohf-popover--setting {
+    padding: 0 12px calc(12px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+  }
+  .ohf .ohf-popover--list {
+    padding: 0 10px calc(10px + env(safe-area-inset-bottom));
+  }
+  .ohf .ohf-popover--list .ohf-field > .ohf-field-label,
+  .ohf .ohf-popover--setting .ohf-field-row .ohf-field-label {
+    display: none;
+  }
+  .ohf-sheet-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0 8px 6px;
+    flex-shrink: 0;
+  }
+  .ohf-sheet-title {
+    font-size: 15px;
+    font-weight: 620;
+  }
+  .ohf .ohf-sheet-close,
+  .ohf .ohf-picker-close {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+  }
+  .ohf .ohf-opt {
+    height: 48px;
+    font-size: 15px;
+  }
+  .ohf .ohf-slider {
+    height: 44px;
+  }
+  .ohf .ohf-popover--picker {
+    height: min(78vh, calc(var(--ohf-vv-h, 100dvh) - max(56px, env(safe-area-inset-top) + 24px)));
+  }
+  .ohf-picker-head {
+    padding: 4px 10px 8px 16px;
+  }
+  .ohf .ohf-model-row {
+    min-height: 56px;
+  }
+  .ohf .ohf-popover--assets {
+    max-height: calc(var(--ohf-vv-h, 100dvh) - max(56px, env(safe-area-inset-top) + 24px));
+  }
+
+  /* ---- dialogs (API keys) rise from the bottom too ---- */
+  .ohf dialog.ohf-sheet-dialog {
+    position: fixed;
+    inset: auto 0 var(--ohf-kb, 0px) 0;
+    margin: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+  .ohf dialog.ohf-sheet-dialog .ohf-dialog-panel {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(var(--ohf-vv-h, 100dvh) - max(40px, env(safe-area-inset-top) + 16px));
+    border-radius: 22px 22px 0 0;
+    border-bottom: none;
+    padding-bottom: env(safe-area-inset-bottom);
+    animation: ohf-sheet-up 0.26s var(--ease-slide);
+  }
+  .ohf-keys-list {
+    padding: 14px 14px 4px;
+  }
+  .ohf-key-row-main {
+    flex-wrap: wrap;
+  }
+  .ohf .ohf-key-row :is(.ohf-btn-quiet, .ohf-btn-solid, .ohf-btn-danger),
+  .ohf .ohf-keys-actions :is(.ohf-btn-quiet, .ohf-keys-save),
+  .ohf .ohf-keys-account .ohf-btn-quiet,
+  .ohf .ohf-viewer-edit-acts :is(.ohf-btn-quiet, .ohf-keys-save) {
+    height: 44px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  .ohf-keys-account {
+    margin: 10px 14px 14px;
+  }
+  .ohf .ohf-viewer-copy {
+    min-height: 36px;
+  }
+}
+
+@keyframes ohf-sheet-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ohf .ohf-popover,
+  .ohf dialog.ohf-sheet-dialog .ohf-dialog-panel {
+    animation: none;
   }
 }
