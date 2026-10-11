@@ -26,11 +26,11 @@ import { VideoStill } from "./video-still";
 const EMPTY: Record<GalleryView, { title: string; hint: string }> = {
   image: {
     title: "Your image runs land here",
-    hint: "Describe a subject below, pick a model, press Generate. Every finished run stays in this browser.",
+    hint: "Describe a subject below, pick a model, then press the price to generate. Every finished run stays in this browser.",
   },
   video: {
     title: "Your video runs land here",
-    hint: "Describe the shot below, pick a model, press Generate. Every finished run stays in this browser.",
+    hint: "Set up the shot in the panel, then press the price to generate. Every finished run stays in this browser.",
   },
   assets: {
     title: "Nothing generated yet",

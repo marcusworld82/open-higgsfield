@@ -5,7 +5,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { parseSettings } from "@/generation/catalog";
 import type { ModelEntry, Surface } from "@/generation/catalog";
-import { estimateUsd, formatEstimate } from "@/generation/estimate";
+import { estimateUsd, formatPrice } from "@/generation/estimate";
 import { MAX_BATCH, useActive } from "@/generation/stores/active";
 import { useVideoMedia } from "@/generation/stores/media";
 import { useImagePrompt, useVideoPrompt } from "@/generation/stores/prompt";
@@ -15,10 +15,11 @@ import { swatchFor } from "./artwork";
 import { AssetPicker } from "./asset-picker";
 import { PROMPT_PLACEHOLDERS, countSetting } from "./data";
 import type { RunRecord } from "./history";
-import { ArrowUpIcon, CaretDownIcon, CloseIcon, MinusIcon, PlusIcon, WarningIcon } from "./icons";
+import { CaretDownIcon, CloseIcon, MinusIcon, PlusIcon, WarningIcon } from "./icons";
 import { MediaStrip, useMediaTray } from "./media-tray";
 import { ModelIcon, modelIconSrc } from "./model-icon";
 import { ModelPicker } from "./model-picker";
+import { PriceButton } from "./price-button";
 import { SettingPill, SettingPopover } from "./settings";
 
 /* Overlay ids: the two fixed panels, or one setting addressed by its catalog
@@ -227,7 +228,7 @@ export function Composer({
         : "Add a source video and at least one image"
       : "Write a prompt first"
     : `${generateLabel} · ${shortcut ?? "⌘↵"}`;
-  const estimate = formatEstimate(estimateUsd(model, values, batchValue));
+  const price = formatPrice(estimateUsd(model, values, batchValue));
 
   return (
     <div className="ohf-dock" ref={dockRef} data-selecting={selecting}>
@@ -397,28 +398,17 @@ export function Composer({
                 <BatchStepper value={batchValue} counts={counts} onChange={setBatchValue} />
               </div>
 
+              {/* The price is the button: one figure, no verb. The tip still
+                  says what pressing does and how to press it from the keys. */}
               <span className="ohf-generate-slot ohf-tip ohf-tip--end" data-tip={generateTip}>
-                <span className="ohf-cost" title="Planning estimate before you generate. OpenAI and Google follow published list rates. Higgsfield bills the key on your account.">
-                  {estimate}
-                </span>
-                <button
-                  type="button"
-                  className="ohf-generate"
+                <PriceButton
+                  price={price}
                   disabled={disabled}
-                  data-busy={generating}
-                  aria-label={generateLabel}
-                  onClick={onGenerate}
-                >
-                  {/* The sheen is the only thing a run in flight changes here:
-                      the label still names what pressing does, because pressing
-                      is still allowed. Progress is the grid's to report. */}
-                  {generating && <span className="ohf-generate-sheen" aria-hidden />}
-                  <span className="ohf-generate-glyph" aria-hidden>
-                    <ArrowUpIcon size={15} />
-                  </span>
-                  <span className="ohf-generate-label">Generate</span>
-                  {shortcut && <kbd className="ohf-kbd">{shortcut}</kbd>}
-                </button>
+                  busy={generating}
+                  blockedReason={disabled ? generateTip : null}
+                  shortcut={shortcut}
+                  onPress={onGenerate}
+                />
               </span>
             </div>
           </div>

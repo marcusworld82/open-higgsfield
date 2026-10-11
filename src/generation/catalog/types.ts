@@ -54,9 +54,22 @@ export type ModelEntry = {
   provider?: ProviderId;
 };
 
+/** One custom shot of a multi-shot video: its own prompt and length. */
+export type Shot = { prompt: string; duration: number };
+
+/** Inputs that are not a catalog setting: a value picked from a live list
+    (Genjutsu's restyle presets) or a structure (multi-shot prompts). */
+export type PlaneExtras = {
+  /** Genjutsu restyle style id, from the account's presets list. */
+  presetId?: string;
+  /** Kling multi-shot custom shots, sent as multi_prompt. */
+  shots?: Shot[];
+};
+
 export type GenerationPlane = {
   model: string;
   prompt: { text: string };
   media: Partial<Record<MediaRole, MediaItem[]>>;
   settings: Record<string, unknown>;
+  extras?: PlaneExtras;
 };

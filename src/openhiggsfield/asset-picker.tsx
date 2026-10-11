@@ -52,8 +52,11 @@ export function AssetPicker({
   onUpload,
   onApply,
   onClose,
+  initialRole,
 }: {
   model: ModelEntry;
+  /** The role the panel opens on — a slot in the video panel names its own. */
+  initialRole?: MediaRole;
   /** The current surface's attachments. They are what the panel opens holding:
       a role's inputs are edited here, not only added to. */
   items: MediaItem[];
@@ -68,7 +71,8 @@ export function AssetPicker({
   const stored = useSettings((state) => state.byModel[model.id]);
   const limits = roleLimits(model, stored);
   const roles = rolesOf(model, stored);
-  const [role, setRole] = useState<MediaRole>(() => defaultRole(model, stored));
+  const firstRole = initialRole && roles.includes(initialRole) ? initialRole : defaultRole(model, stored);
+  const [role, setRole] = useState<MediaRole>(firstRole);
   /* null until the visitor picks a shelf: the panel opens on whichever one
      actually holds something, so someone who has generated all day and
      uploaded nothing does not land on an empty tab. */
@@ -77,7 +81,7 @@ export function AssetPicker({
      already on the plane, so an attached tile opens marked and can be pressed
      off again. An array, not a Set: the order picked is the order attached,
      and a start/end pair is not order-blind. */
-  const [selected, setSelected] = useState<string[]>(() => urlsOf(items, defaultRole(model, stored)));
+  const [selected, setSelected] = useState<string[]>(() => urlsOf(items, firstRole));
   const tabsRef = useRef<HTMLDivElement>(null);
 
   const kind = ROLE_KINDS[role];

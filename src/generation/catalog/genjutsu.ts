@@ -19,6 +19,6 @@ export const genjutsu: ModelEntry = {
       values: ["motion-transfer", "object-swap", "restyle"],
       default: "motion-transfer",
     },
-    resolution: { type: "enum", values: ["720p", "480p", "1080p"], default: "720p" },
+    resolution: { type: "enum", values: ["480p", "720p", "1080p"], default: "720p" },
   },
 };
