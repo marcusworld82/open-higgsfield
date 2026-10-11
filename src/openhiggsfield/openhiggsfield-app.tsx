@@ -10,6 +10,7 @@ import { AuthRequired, unwrap } from "@/generation/result";
 import { MODELS, getModel } from "@/generation/catalog";
 import type { GenerationPlane, Surface } from "@/generation/catalog";
 import { assemblePlane } from "@/generation/plane";
+import { blocker } from "@/generation/requirements";
 import type { GenerationStatus } from "@/generation/platform";
 import { POLL_DEADLINE_MS, stopWatching, watchRequest } from "@/generation/poll";
 import { useActive } from "@/generation/stores/active";
@@ -37,6 +38,7 @@ import { useVisualViewport } from "./use-visual-viewport";
 import { CloseIcon, UndoIcon } from "./icons";
 import { SelectionBar, type SaveProgress } from "./selection-bar";
 import { Topbar } from "./topbar";
+import { VideoStudio } from "./video-panel";
 import { Viewer } from "./viewer";
 
 /* Long enough to read the bar and reach it; the drain line states the window. */
@@ -424,18 +426,13 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
       );
       return;
     }
-    if (entry.id === "genjutsu") {
-      const hasVideo = (plane.media.video ?? []).length > 0;
-      const hasImage = (plane.media.reference ?? []).length > 0;
-      if (!hasVideo || (plane.settings.mode !== "restyle" && !hasImage)) {
-        setError(
-          plane.settings.mode === "restyle"
-            ? "Genjutsu restyle needs a source video."
-            : "Genjutsu needs a source video and at least one reference image.",
-        );
-        return;
-      }
-    } else if (!plane.prompt.text.trim()) {
+    /* The same check the panel's button reads, so a keyboard press cannot
+       send what the button would have refused. */
+    const counts: Partial<Record<keyof typeof plane.media, number>> = {};
+    for (const [role, list] of Object.entries(plane.media)) counts[role as keyof typeof plane.media] = list?.length ?? 0;
+    const block = blocker(entry, plane.settings, counts, plane.prompt.text, plane.extras ?? {});
+    if (block) {
+      if (entry.surface === "video") setError(`${block}.`);
       return;
     }
 
@@ -474,7 +471,8 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
       ratio,
       meta,
       badge,
-      settings: plane.settings,
+      /* The extras ride along so Reuse restores a picked style or the shots. */
+      settings: { ...plane.settings, ...(plane.extras ?? {}) },
       inputs: inputsOf(plane),
       createdAt: startedAt,
     };
@@ -773,6 +771,18 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
   );
   const busy = runs.length > 0 || history.some((record) => record.status === "running");
 
+  const selectionBar = (
+    <SelectionBar
+      records={pickedRecords}
+      saving={saving}
+      onDownload={downloadSelection}
+      onFavorite={favoritePicked}
+      onDelete={deletePicked}
+      onClose={clearPicked}
+    />
+  );
+  const undoNotice = deleted && <UndoBar records={deleted} onUndo={restoreDeleted} onDismiss={dismissDeleted} />;
+
   if (needsSignIn) {
     return (
       <div className={`ohf ${fontClassName}`} style={{ "--ohf-grain": GRAIN_URI } as React.CSSProperties}>
@@ -784,7 +794,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
   return (
     <div className={`ohf ${fontClassName}`} style={{ "--ohf-grain": GRAIN_URI } as React.CSSProperties}>
       <div className="ohf-shell">
-        <main className="ohf-main">
+        <main className="ohf-main" data-surface={surface}>
           <Topbar
             view={view}
             onView={switchView}
@@ -811,36 +821,38 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
             galleryRef={galleryRef}
           />
 
-          <Composer
-            surface={surface}
-            model={model}
-            generating={busy}
-            error={error}
-            focusNonce={focusNonce}
-            history={history}
-            selecting={selected.length > 0}
-            selection={
-              <SelectionBar
-                records={pickedRecords}
-                saving={saving}
-                onDownload={downloadSelection}
-                onFavorite={favoritePicked}
-                onDelete={deletePicked}
-                onClose={clearPicked}
-              />
-            }
-            onError={setError}
-            onGenerate={runGenerate}
-            notice={
-              deleted && (
-                <UndoBar
-                  records={deleted}
-                  onUndo={restoreDeleted}
-                  onDismiss={dismissDeleted}
-                />
-              )
-            }
-          />
+          {surface === "video" ? (
+            <VideoStudio
+              model={model}
+              generating={busy}
+              error={error}
+              focusNonce={focusNonce}
+              history={history}
+              selecting={selected.length > 0}
+              selection={selectionBar}
+              onError={setError}
+              onGenerate={runGenerate}
+              onOpenKeys={() => {
+                setKeyProvider("higgsfield");
+                setKeysOpen(true);
+              }}
+              notice={undoNotice}
+            />
+          ) : (
+            <Composer
+              surface={surface}
+              model={model}
+              generating={busy}
+              error={error}
+              focusNonce={focusNonce}
+              history={history}
+              selecting={selected.length > 0}
+              selection={selectionBar}
+              onError={setError}
+              onGenerate={runGenerate}
+              notice={undoNotice}
+            />
+          )}
         </main>
 
         {viewerItem && (

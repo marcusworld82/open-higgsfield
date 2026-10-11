@@ -1,7 +1,7 @@
 "use server";
 
 import { getModel, parseSettings } from "./catalog";
-import type { GenerationPlane } from "./catalog/types";
+import type { GenerationPlane, PlaneExtras } from "./catalog/types";
 import {
   MissingCredentialsError,
   PROVIDERS,
@@ -15,7 +15,7 @@ import { checkKey, type KeyCheck } from "./key-check";
 import { deleteKey, listKeySummaries, readKey, readKeys, saveKey, type KeySummaries, type KeySummary } from "./key-store";
 import { createPlatformClient } from "./platform";
 import type { GenerationStatus, StatusResult } from "./platform";
-import { firstGenjutsuPreset, generateNanoBanana, generateOpenAIImage, kieStatus, submitKie } from "./providers";
+import { generateNanoBanana, generateOpenAIImage, kieStatus, listGenjutsuPresets, submitKie, type GenjutsuPreset } from "./providers";
 import type { ActionResult } from "./result";
 import { toPlatform } from "./to-platform";
 
@@ -89,6 +89,7 @@ async function submit(plane: GenerationPlane): Promise<SubmitResult> {
   const parsed: GenerationPlane = {
     ...plane,
     settings: parseSettings(model, plane.settings),
+    extras: parseExtras(plane.extras),
   };
   const provider = providerOfModel(model.provider);
   const stored = await readKeys();
@@ -111,12 +112,41 @@ async function submit(plane: GenerationPlane): Promise<SubmitResult> {
     return { requestId, done: { ...done, requestId } };
   }
 
-  if (parsed.model === "genjutsu" && parsed.settings.mode === "restyle") {
-    parsed.settings.presetId = await firstGenjutsuPreset(hfBase(), key);
-  }
   const { path, body } = toPlatform(parsed);
   const queued = await createPlatformClient({ apiKey: key, baseUrl: hfBase() }).submit(path, body);
   return { requestId: queued.requestId };
+}
+
+/* A preset id is a UUID from the presets list; shots are free text and small
+   numbers. Anything else in the payload is dropped before it reaches a body. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseExtras(data: unknown): PlaneExtras | undefined {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) return undefined;
+  const raw = data as Record<string, unknown>;
+  const extras: PlaneExtras = {};
+  if (typeof raw.presetId === "string" && UUID.test(raw.presetId)) extras.presetId = raw.presetId;
+  if (Array.isArray(raw.shots)) {
+    extras.shots = raw.shots.slice(0, 6).flatMap((shot) => {
+      if (shot === null || typeof shot !== "object") return [];
+      const { prompt, duration } = shot as Record<string, unknown>;
+      if (typeof prompt !== "string" || typeof duration !== "number" || !Number.isFinite(duration)) return [];
+      return [{ prompt: prompt.slice(0, 512), duration }];
+    });
+  }
+  return extras;
+}
+
+/** Genjutsu restyle styles for the saved Higgsfield key. A free read: listing
+    presets does not start a generation. */
+export async function listGenjutsuStyles(): Promise<ActionResult<GenjutsuPreset[]>> {
+  try {
+    const key = await readKey("higgsfield");
+    if (!key) throw new MissingCredentialsError("higgsfield");
+    return { ok: true, value: await listGenjutsuPresets(hfBase(), key) };
+  } catch (caught) {
+    return toFailure(caught, "styles");
+  }
 }
 
 export async function getGenerationStatuses(data: unknown): Promise<ActionResult<StatusResult[]>> {

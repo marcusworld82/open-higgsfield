@@ -175,18 +175,20 @@ export async function generateNanoBanana(
   return { status: "completed", requestId: "", images: [{ url }] };
 }
 
-export async function firstGenjutsuPreset(baseUrl: string, apiKey: string): Promise<string> {
+export type GenjutsuPreset = { id: string; name: string; previewUrl: string | null };
+
+/** The restyle styles the key's account can use, in the API's own order. */
+export async function listGenjutsuPresets(baseUrl: string, apiKey: string): Promise<GenjutsuPreset[]> {
   const root = baseUrl.replace(/\/$/, "");
   const response = await fetch(`${root}/models/higgsfield/genjutsu/restyle/v1.0/presets`, {
     headers: { Authorization: `Key ${apiKey}` },
+    cache: "no-store",
   });
   const payload = await readJson(response);
   if (!response.ok) {
-    throw new Error(messageFrom(payload) || `Could not load Genjutsu presets (${response.status})`);
+    throw new Error(messageFrom(payload) || `Could not load Genjutsu styles (${response.status})`);
   }
-  const id = findPresetId(payload);
-  if (!id) throw new Error("Higgsfield returned no Genjutsu restyle presets");
-  return id;
+  return parsePresets(payload);
 }
 
 async function openaiGenerate(
@@ -267,21 +269,30 @@ function imageUrlFromGemini(payload: unknown): string | null {
   return null;
 }
 
-function findPresetId(payload: unknown): string | null {
+export function parsePresets(payload: unknown): GenjutsuPreset[] {
   const piles = [payload];
   const record = asRecord(payload);
-  for (const key of ["presets", "items", "data", "results"]) {
+  for (const key of ["items", "presets", "data", "results"]) {
     if (Array.isArray(record[key])) piles.push(record[key]);
   }
+  const out: GenjutsuPreset[] = [];
+  const seen = new Set<string>();
   for (const pile of piles) {
     if (!Array.isArray(pile)) continue;
     for (const item of pile) {
       const row = asRecord(item);
       const id = row.id ?? row.preset_id ?? row.presetId;
-      if (typeof id === "string" && id) return id;
+      if (typeof id !== "string" || !id || seen.has(id)) continue;
+      seen.add(id);
+      const preview = row.preview_url ?? row.previewUrl ?? row.thumbnail_url;
+      out.push({
+        id,
+        name: typeof row.name === "string" && row.name ? row.name : "Untitled style",
+        previewUrl: typeof preview === "string" && preview.startsWith("https://") ? preview : null,
+      });
     }
   }
-  return null;
+  return out;
 }
 
 async function inlineImage(url: string): Promise<{ mime_type: string; data: string } | null> {

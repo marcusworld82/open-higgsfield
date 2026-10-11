@@ -8,7 +8,7 @@ import { useImageMedia, useVideoMedia } from "@/generation/stores/media";
 import { useSettings } from "@/generation/stores/settings";
 import { uploadMedia } from "@/generation/upload";
 
-import { ROLE_ACCEPT, ROLE_LABELS, ROLE_TAGS, roleLimits, rolesOf } from "./data";
+import { ROLE_ACCEPT, ROLE_KINDS, ROLE_LABELS, ROLE_TAGS, roleLimits, rolesOf } from "./data";
 import { AudioIcon, CloseIcon } from "./icons";
 import { kindOfFile, captureVideoPoster, loadUploads, mergeUploads, rememberUpload, saveUploads, type UploadRecord } from "./uploads";
 import { VideoStill } from "./video-still";
@@ -36,6 +36,13 @@ export interface MediaTray {
   input: ReactNode;
   /** Set the role the next file takes, then open the OS picker. */
   begin: (role: MediaRole) => void;
+  /** Open the OS picker and attach the file straight to the role once it has
+      uploaded — the panel's empty slots skip the library when it is empty. */
+  beginDirect: (role: MediaRole) => void;
+  /** Upload a dropped file straight into a role. */
+  drop: (role: MediaRole, file: File) => void;
+  /** Detach one input. */
+  remove: (id: string) => void;
   /** Make the role's inputs exactly these URLs — the picker hands back the set
       it edited, so one press both attaches and detaches. */
   apply: (role: MediaRole, urls: string[]) => void;
@@ -53,6 +60,7 @@ export function useMediaTray(
   const [staged, setStaged] = useState<string | null>(null);
   const [uploadsLoaded, setUploadsLoaded] = useState(false);
   const roleRef = useRef<MediaRole>("reference");
+  const directRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   /* Read once, then write back on every change — the same order history takes,
@@ -84,15 +92,30 @@ export function useMediaTray(
   }
   const allFull = roles.length > 0 && roles.every((role) => counts[role]! >= (limits[role] ?? 0));
 
-  async function onFile(file: File | undefined) {
+  /* A direct attach fills an empty slot, or replaces the one frame a single
+     slot holds; a full multi-slot role keeps what it has. */
+  function attach(role: MediaRole, url: string, poster?: string) {
+    /* Read the store fresh: the upload awaited, and the render this closure
+       came from may no longer hold the plane. */
+    const store = (model.surface === "image" ? useImageMedia : useVideoMedia).getState();
+    const limit = limits[role] ?? 0;
+    const held = store.items.filter((item) => item.role === role);
+    if (limit === 1) for (const item of held) store.remove(item.id);
+    else if (held.length >= limit) return;
+    store.add({ id: crypto.randomUUID(), url, role, poster });
+  }
+
+  async function onFile(file: File | undefined, direct = directRef.current, role = roleRef.current) {
     if (!file) return;
+    directRef.current = false;
     onError(null);
     setUploading(true);
     try {
       const [uploaded, poster] = await Promise.all([uploadMedia(file), captureVideoPoster(file)]);
       /* The file outlives this run: it joins the shelf the picker offers, so a
          reference used once can be reached again without a second upload. */
-      setStaged(uploaded.url);
+      if (direct) attach(role, uploaded.url, poster);
+      else setStaged(uploaded.url);
       setUploads((prev) =>
         rememberUpload(prev, {
           id: crypto.randomUUID(),
@@ -120,8 +143,26 @@ export function useMediaTray(
     const element = inputRef.current;
     if (!element) return;
     roleRef.current = role;
+    directRef.current = false;
     element.accept = ROLE_ACCEPT[role];
     element.click();
+  }
+
+  function beginDirect(role: MediaRole) {
+    const element = inputRef.current;
+    if (!element) return;
+    roleRef.current = role;
+    directRef.current = true;
+    element.accept = ROLE_ACCEPT[role];
+    element.click();
+  }
+
+  function drop(role: MediaRole, file: File) {
+    if (kindOfFile(file) !== ROLE_KINDS[role]) {
+      onError(`That file is not ${ROLE_KINDS[role] === "image" ? "an image" : `a${ROLE_KINDS[role] === "audio" ? "n" : ""} ${ROLE_KINDS[role]}`} — drop one here, or tap the slot to pick.`);
+      return;
+    }
+    void onFile(file, true, role);
   }
 
   const input = (
@@ -154,7 +195,20 @@ export function useMediaTray(
     }
   }
 
-  return { roles, items: media.items, uploads, staged, uploading, allFull, input, begin, apply };
+  return {
+    roles,
+    items: media.items,
+    uploads,
+    staged,
+    uploading,
+    allFull,
+    input,
+    begin,
+    beginDirect,
+    drop,
+    remove: media.remove,
+    apply,
+  };
 }
 
 /** Attached inputs, above the prompt — the frames read before the words do. */

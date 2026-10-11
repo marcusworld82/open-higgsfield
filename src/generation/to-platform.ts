@@ -37,6 +37,26 @@ function urls(plane: GenerationPlane, role: "start" | "end" | "reference" | "vid
   return (plane.media[role] ?? []).map((item) => item.url);
 }
 
+/** Custom shots for a multi-shot Kling run, clipped to what the API takes:
+    1–6 shots, each prompt at most 512 characters and 1–15 seconds. */
+export function shotsOf(plane: GenerationPlane): Array<{ prompt: string; duration: number }> {
+  const shots = plane.extras?.shots ?? [];
+  return shots
+    .map((shot) => ({
+      prompt: String(shot.prompt ?? "").trim().slice(0, 512),
+      duration: Math.min(15, Math.max(1, Math.round(Number(shot.duration) || 0))),
+    }))
+    .filter((shot) => shot.prompt.length > 0)
+    .slice(0, 6);
+}
+
+/** Kling takes 3–15 seconds in total, however the shots split it. */
+function shotSeconds(shots: Array<{ duration: number }>): number {
+  const total = shots.reduce((sum, shot) => sum + shot.duration, 0);
+  if (total < 3 || total > 15) throw new Error("Shots must add up to 3–15 seconds");
+  return total;
+}
+
 function cite(prompt: string): string {
   return prompt
     .replace(/@image\s*(\d+)/gi, "Image $1")
@@ -85,7 +105,11 @@ function mapRoutes(plane: GenerationPlane, model: ModelEntry): Mapped {
   if (!mode && start && routes.image) route = routes.image;
   if (!mode && !start && routes.text) route = routes.text;
   if (!route) throw new Error(`No platform route for ${model.id}`);
-  if ((route.shape === "image" || route.shape === "frames" || route.shape === "motion") && !start && routes.text && mode !== "image" && mode !== "first-last") {
+  const end = urls(plane, "end")[0];
+  /* The Frames tab covers text-to-video too: with no frame attached the run
+     goes to the text route. An end frame alone has nowhere to go. */
+  if (route.shape === "image" && !start && end) throw new Error("Add a start frame to use an end frame");
+  if ((route.shape === "image" || route.shape === "frames" || route.shape === "motion") && !start && routes.text && mode !== "first-last") {
     route = routes.text;
   }
   if ((route.shape === "image" || route.shape === "frames" || route.shape === "motion") && !start) {
@@ -115,7 +139,16 @@ function routeBody(plane: GenerationPlane, route: ModelRoute): Record<string, un
   if (allow.has("tier") && typeof settings.tier === "string") {
     body.mode = route.maxTier === "pro" && settings.tier === "4k" ? "pro" : settings.tier;
   }
-  if (allow.has("multi")) body.multi_shots = Boolean(settings.multiShots);
+  if (allow.has("multi")) {
+    body.multi_shots = Boolean(settings.multiShots);
+    const shots = body.multi_shots ? shotsOf(plane) : [];
+    if (shots.length) {
+      body.multi_prompt = shots;
+      body.duration = shotSeconds(shots);
+    } else if (body.multi_shots && route.path.startsWith("kling-video/o3/")) {
+      throw new Error("Add at least one shot, or turn multi-shot off");
+    }
+  }
   if (allow.has("format") && typeof settings.outputFormat === "string") body.output_format = settings.outputFormat;
   if (allow.has("fps")) body.fps = Number(settings.fps);
   if (allow.has("camera") && typeof settings.cameraMovement === "string") body.camera_movement = settings.cameraMovement;
@@ -180,12 +213,19 @@ function mapKlingTurbo(plane: GenerationPlane): Mapped {
 function mapKling3(plane: GenerationPlane, prefix: string): Mapped {
   const start = urls(plane, "start")[0];
   const end = urls(plane, "end")[0];
+  if (end && !start) throw new Error("Add a start frame to use an end frame");
+  const multi = plane.settings.multiShots === true;
+  /* Custom shots set the length themselves: Kling sums them and ignores the
+     top-level duration, so the body states the sum rather than a stale value.
+     Multi-shot with no custom shots lets Kling cut the shots itself. */
+  const shots = multi ? shotsOf(plane) : [];
   const body: Record<string, unknown> = {
     prompt: plane.prompt.text,
     sound: plane.settings.sound ? "on" : "off",
-    duration: plane.settings.duration,
+    duration: shots.length ? shotSeconds(shots) : plane.settings.duration,
     cfg_scale: plane.settings.cfgScale,
-    multi_shots: plane.settings.multiShots,
+    multi_shots: multi,
+    ...(shots.length ? { multi_prompt: shots } : {}),
   };
   if (start) {
     body.image_url = start;
@@ -273,6 +313,7 @@ function seedanceBody(plane: GenerationPlane, withDuration: boolean) {
 function mapSeedance(plane: GenerationPlane, prefix: string): Mapped {
   const start = urls(plane, "start")[0];
   const end = urls(plane, "end")[0];
+  if (end && !start) throw new Error("Add a start frame to use an end frame");
   const refs = urls(plane, "reference");
   const videos = urls(plane, "video");
   const audios = urls(plane, "audio");
@@ -307,18 +348,22 @@ function mapGenjutsu(plane: GenerationPlane): Mapped {
   const mode = plane.settings.mode === "object-swap" || plane.settings.mode === "restyle"
     ? plane.settings.mode
     : "motion-transfer";
+  if (!video) throw new Error("Add a reference video");
+  /* No duration or aspect field: Genjutsu takes both from the source video. */
   const body: Record<string, unknown> = {
-    prompt: plane.prompt.text,
+    prompt: cite(plane.prompt.text),
     resolution: plane.settings.resolution ?? "720p",
-    ...(video ? { video_url: video } : {}),
+    video_url: video,
   };
   if (mode === "restyle") {
+    const presetId = plane.extras?.presetId;
+    if (!presetId) throw new Error("Pick a style for Restyle");
+    body.preset_id = presetId;
     const refs = images.slice(0, 5);
     if (refs.length) body.image_urls = refs;
-    if (typeof plane.settings.presetId === "string" && plane.settings.presetId) {
-      body.preset_id = plane.settings.presetId;
-    }
-  } else if (images.length) {
+  } else if (!images.length) {
+    throw new Error(mode === "object-swap" ? "Add at least one object or product image" : "Add at least one character image");
+  } else {
     body.image_urls = images.slice(0, 8);
   }
   return { path: `higgsfield/genjutsu/${mode}/v1.0`, body };

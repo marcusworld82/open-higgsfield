@@ -1,7 +1,8 @@
 import type { ModelEntry, ModelRoute } from "./types";
 
 const fields = ["duration", "resolution", "aspect", "audioFlag", "thinking"] as const;
-const aspect = ["16:9", "4:3", "1:1", "3:4", "9:16", "adaptive"] as const;
+/* "adaptive" is the API default: the frame follows the inputs. The studio shows it as Auto. */
+const aspect = ["adaptive", "16:9", "9:16", "1:1", "4:3", "3:4"] as const;
 
 function buildWan3(id: string, label: string, prefix: string): ModelEntry {
   const route = (suffix: string, shape: ModelRoute["shape"], extra?: Partial<ModelRoute>): ModelRoute => ({
@@ -20,11 +21,11 @@ function buildWan3(id: string, label: string, prefix: string): ModelEntry {
     modeRoles: {
       text: {},
       image: { start: 1, end: 1 },
-      reference: { reference: 8, video: 5, audio: 5 },
+      reference: { reference: 10, video: 5, audio: 5 },
     },
     settings: {
       mode: { type: "enum", values: ["text", "image", "reference"], default: "image" },
-      aspectRatio: { type: "enum", values: aspect, default: "16:9" },
+      aspectRatio: { type: "enum", values: aspect, default: "adaptive" },
       resolution: { type: "enum", values: ["480p", "720p", "1080p"], default: "1080p" },
       duration: { type: "range", min: 2, max: 30, default: 5 },
       generateAudio: { type: "boolean", default: true },

@@ -15,8 +15,13 @@ export function estimateUsd(
 }
 
 export function formatEstimate(usd: number): string {
-  if (usd < 0.01) return `est. $${usd.toFixed(3)}`;
-  return `est. $${usd.toFixed(2)}`;
+  return `est. ${formatPrice(usd)}`;
+}
+
+/** The figure the Generate button carries, and nothing else: "$0.40". */
+export function formatPrice(usd: number): string {
+  if (usd > 0 && usd < 0.01) return `$${usd.toFixed(3)}`;
+  return `$${usd.toFixed(2)}`;
 }
 
 function unitUsd(model: ModelEntry, settings: Record<string, unknown>): number {
@@ -41,7 +46,7 @@ function unitUsd(model: ModelEntry, settings: Record<string, unknown>): number {
     if (resolution === "2k") return 0.07;
     return 0.04;
   }
-  const seconds = typeof settings.duration === "number" ? settings.duration : 5;
+  const seconds = Number(settings.duration) > 0 ? Number(settings.duration) : 5;
   const resolution = typeof settings.resolution === "string" ? settings.resolution : "720p";
   const perSecond = resolution === "1080p" || resolution === "4k" ? 0.12 : 0.07;
   return perSecond * seconds;

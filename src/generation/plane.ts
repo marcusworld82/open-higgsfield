@@ -1,5 +1,5 @@
 import { getModel, parseSettings } from "./catalog";
-import type { GenerationPlane } from "./catalog/types";
+import type { GenerationPlane, PlaneExtras, Shot } from "./catalog/types";
 import { roleLimits } from "@/openhiggsfield/data";
 import { useActive } from "./stores/active";
 import { useImageMedia, useVideoMedia } from "./stores/media";
@@ -27,5 +27,24 @@ export function assemblePlane(): GenerationPlane {
     prompt: { text },
     media,
     settings: parseSettings(model, raw),
+    extras: extrasOf(raw),
   };
+}
+
+/** The non-catalog inputs ride in the same per-model settings record, so they
+    persist and reuse the way every other dial does. */
+export function extrasOf(raw: Record<string, unknown>): PlaneExtras {
+  const extras: PlaneExtras = {};
+  if (typeof raw.presetId === "string" && raw.presetId) extras.presetId = raw.presetId;
+  if (Array.isArray(raw.shots)) extras.shots = shotsFrom(raw.shots);
+  return extras;
+}
+
+export function shotsFrom(value: unknown): Shot[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((shot) => {
+    if (shot === null || typeof shot !== "object") return [];
+    const { prompt, duration } = shot as Record<string, unknown>;
+    return typeof prompt === "string" && typeof duration === "number" ? [{ prompt, duration }] : [];
+  });
 }

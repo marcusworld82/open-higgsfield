@@ -89,5 +89,5 @@ export function getModel(id: string): ModelEntry {
   return model;
 }
 
-export type { GenerationPlane, MediaItem, MediaRole, ModelEntry, PlatformPaths, Surface } from "./types";
+export type { GenerationPlane, MediaItem, MediaRole, ModelEntry, PlaneExtras, PlatformPaths, Shot, Surface } from "./types";
 export { parseSettings };
