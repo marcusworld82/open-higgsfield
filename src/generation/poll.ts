@@ -6,7 +6,9 @@ import { AuthRequired, unwrap } from "./result";
 const TERMINAL = new Set(["completed", "failed", "nsfw", "canceled"]);
 
 export const POLL_INTERVAL_MS = 4000;
-export const POLL_DEADLINE_MS = 10 * 60_000;
+/** No client deadline. Higgsfield keeps the job until it finishes, and stopping
+    early only marks a live run as failed. A terminal status still ends the watch. */
+export const POLL_DEADLINE_MS = Number.POSITIVE_INFINITY;
 /** Rounds allowed to fail back to back before the watches are given up on. One
     dropped round must not end every generation in flight. */
 const MAX_MISSES = 3;
